@@ -229,7 +229,7 @@ packages:
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@supportbridge/sdk@file:vendor/supportbridge-sdk-0.10.0.tgz':
-    resolution: {integrity: sha512-H5c+rBHy49YdFgfLUBcFEelK92NK6GbsFaSpuTmT7e4D0sJLB/N3YfCFqgL8SNoY8HJT9JqoR+ztXyvap5rZPQ==, tarball: file:vendor/supportbridge-sdk-0.10.0.tgz}
+    resolution: {integrity: sha512-wybm0hDDUdBiVQUXpKF1IN+5xYPmVzeQpjFMQZi7hF/7OtVkufk/B81c7mGW56zzfu0JOzo86OUeP8a5fTF0zA==, tarball: file:vendor/supportbridge-sdk-0.10.0.tgz}
     version: 0.10.0
     engines: {node: '>=20'}
     hasBin: true
