@@ -113,6 +113,14 @@ export function createServer(): ServerInstallation {
         environment: process.env.SUPPORTBRIDGE_ENVIRONMENT || "staging",
         assistanceIntents,
         revenueSignals,
+        // This remote MCP is intentionally stateless: each HTTP request gets a
+        // fresh SDK installation, so a late manual-offer lookup cannot be
+        // cached for the next request as it can in a long-lived local server.
+        // Give the staging control plane enough time to return the pending
+        // offer during the same business-tool invocation.
+        client: {
+          offerProviderTimeoutMs: 1_500,
+        },
       })
     : undefined;
 
