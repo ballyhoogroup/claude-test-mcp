@@ -69,6 +69,59 @@ This repo includes a [`render.yaml`](./render.yaml) blueprint.
    `npm install && npm run build`, start command `npm start`, health check
    path `/healthz`.)
 
+## Authentication (optional, via WorkOS AuthKit)
+
+By default this server is fully open — no auth. You can put it behind OAuth
+2.1 using [WorkOS AuthKit](https://workos.com/docs/authkit/mcp) as the
+authorization server, while this server acts as the resource server
+(verifying bearer tokens via AuthKit's JWKS endpoint). Auth is **opt-in**: it
+only turns on once both env vars below are set, so it won't break an
+existing open deployment until you configure it.
+
+### 1. WorkOS dashboard setup
+
+1. Sign up / log in at [dashboard.workos.com](https://dashboard.workos.com) and
+   select (or create) an environment.
+2. Enable **AuthKit** for that environment if it isn't already.
+3. Note your AuthKit domain, shown in the AuthKit settings — it looks like
+   `your-subdomain.authkit.app`.
+4. In AuthKit's configuration, turn on **Dynamic Client Registration**. This
+   is required — without it, MCP clients like ChatGPT and Claude can't
+   register themselves and the OAuth flow fails with CORS errors.
+
+No API key is needed for the server itself — token verification uses
+AuthKit's public JWKS, not a secret.
+
+### 2. Set environment variables on Render
+
+In the Render dashboard, open the service → **Environment**, and add:
+
+| Key | Value |
+| --- | --- |
+| `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
+| `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com` (no trailing slash, no `/mcp`) |
+
+Save — Render redeploys automatically. Once both are set, `/mcp` requires a
+valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
+returning the resource metadata that points MCP clients at AuthKit.
+
+### 3. How the flow works
+
+1. An MCP client (ChatGPT, Claude) calls `POST /mcp` with no token.
+2. This server replies `401` with a `WWW-Authenticate: Bearer
+   resource_metadata="https://.../.well-known/oauth-protected-resource"`
+   header.
+3. The client fetches that metadata, finds AuthKit listed as the
+   authorization server, and runs the OAuth 2.1 + PKCE flow directly against
+   AuthKit (self-registering via Dynamic Client Registration).
+4. The client retries `POST /mcp` with `Authorization: Bearer <token>`. This
+   server verifies the token's signature and issuer against AuthKit's JWKS
+   and, if valid, handles the request as normal.
+
+No changes are needed on the ChatGPT/Claude Desktop side beyond what's
+already in [Connecting clients](#connecting-clients) below — the OAuth
+dance is automatic once the server advertises it.
+
 ## Connecting clients
 
 ### ChatGPT Connectors
