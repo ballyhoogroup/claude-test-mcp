@@ -10,3 +10,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.22.2
+      # Optional: set both to require WorkOS AuthKit OAuth on /mcp. Leave
+      # unset to keep the server open (default). See README for setup.
+      - key: AUTHKIT_DOMAIN
+        sync: false
+      - key: MCP_RESOURCE_URL
+        sync: false
