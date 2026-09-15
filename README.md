@@ -85,9 +85,12 @@ existing open deployment until you configure it.
 2. Enable **AuthKit** for that environment if it isn't already.
 3. Note your AuthKit domain, shown in the AuthKit settings — it looks like
    `your-subdomain.authkit.app`.
-4. In AuthKit's configuration, turn on **Dynamic Client Registration**. This
-   is required — without it, MCP clients like ChatGPT and Claude can't
-   register themselves and the OAuth flow fails with CORS errors.
+4. Under **Connect → Configuration**, enable **Client ID Metadata Document
+   (CIMD)**. Enable **Dynamic Client Registration (DCR)** as well for backward
+   compatibility with MCP clients that do not support CIMD yet.
+5. Add `https://<your-service-name>.onrender.com/mcp` as a **Resource Indicator**.
+   It must exactly match `MCP_RESOURCE_URL`. Setting it as the default also
+   supports older clients that omit the OAuth `resource` parameter.
 
 No API key is needed for the server itself — token verification uses
 AuthKit's public JWKS, not a secret.
@@ -99,7 +102,7 @@ In the Render dashboard, open the service → **Environment**, and add:
 | Key | Value |
 | --- | --- |
 | `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
-| `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com` (no trailing slash, no `/mcp`) |
+| `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com/mcp` (the full MCP endpoint, with no trailing slash) |
 
 Save — Render redeploys automatically. Once both are set, `/mcp` requires a
 valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
@@ -115,8 +118,8 @@ returning the resource metadata that points MCP clients at AuthKit.
    authorization server, and runs the OAuth 2.1 + PKCE flow directly against
    AuthKit (self-registering via Dynamic Client Registration).
 4. The client retries `POST /mcp` with `Authorization: Bearer <token>`. This
-   server verifies the token's signature and issuer against AuthKit's JWKS
-   and, if valid, handles the request as normal.
+   server verifies the token's signature, issuer, expiration, and audience
+   against AuthKit's JWKS and, if valid, handles the request as normal.
 
 No changes are needed on the ChatGPT/Claude Desktop side beyond what's
 already in [Connecting clients](#connecting-clients) below — the OAuth
@@ -130,7 +133,12 @@ dance is automatic once the server advertises it.
    MCP server).
 2. Enter your Render URL's `/mcp` endpoint, e.g.
    `https://<your-service-name>.onrender.com/mcp`.
-3. ChatGPT will discover the `search` and `fetch` tools automatically.
+3. Choose automatic OAuth discovery; do not enter a separate client id or
+   client secret. ChatGPT will discover AuthKit from the server's protected
+   resource metadata, then discover or register its OAuth client using CIMD
+   or DCR.
+4. ChatGPT will discover the `search` and `fetch` tools automatically after
+   the user completes the AuthKit sign-in flow.
 
 ### Claude Desktop
 

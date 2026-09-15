@@ -17,6 +17,7 @@ function normalizeIssuer(domain: string): string {
 
 const rawAuthkitDomain = process.env.AUTHKIT_DOMAIN;
 const resourceUrl = process.env.MCP_RESOURCE_URL?.replace(/\/$/, "");
+const resourceOrigin = resourceUrl ? new URL(resourceUrl).origin : undefined;
 const issuer = rawAuthkitDomain ? normalizeIssuer(rawAuthkitDomain) : undefined;
 
 export const authEnabled = Boolean(issuer && resourceUrl);
@@ -30,14 +31,19 @@ if (process.env.AUTHKIT_DOMAIN && !process.env.MCP_RESOURCE_URL) {
 }
 
 export function protectedResourceMetadataUrl(): string {
-  return `${resourceUrl}/.well-known/oauth-protected-resource`;
+  return `${resourceOrigin}/.well-known/oauth-protected-resource`;
 }
 
 export function protectedResourceMetadata() {
   return {
     resource: resourceUrl,
     authorization_servers: [issuer],
+    bearer_methods_supported: ["header"],
   };
+}
+
+export function authorizationServerMetadataUrl(): string {
+  return `${issuer}/.well-known/oauth-authorization-server`;
 }
 
 export type TokenCheck = { ok: true } | { ok: false; reason: string };
@@ -52,7 +58,10 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
 
   const token = authorizationHeader.slice("Bearer ".length).trim();
   try {
-    await jwtVerify(token, jwks!, { issuer });
+    // WorkOS issues the configured Resource Indicator as the access token's
+    // `aud` claim. Checking it prevents a token minted for another service in
+    // the same WorkOS environment from being replayed against this MCP.
+    await jwtVerify(token, jwks!, { issuer, audience: resourceUrl });
     return { ok: true };
   } catch {
     return { ok: false, reason: "invalid_token" };

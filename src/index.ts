@@ -1,7 +1,13 @@
 import express from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer } from "./server.js";
-import { authEnabled, protectedResourceMetadata, protectedResourceMetadataUrl, verifyBearerToken } from "./auth.js";
+import {
+  authEnabled,
+  authorizationServerMetadataUrl,
+  protectedResourceMetadata,
+  protectedResourceMetadataUrl,
+  verifyBearerToken,
+} from "./auth.js";
 
 const app = express();
 app.use(express.json());
@@ -12,7 +18,10 @@ app.use(express.json());
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Mcp-Session-Id");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID",
+  );
   res.header("Access-Control-Expose-Headers", "WWW-Authenticate, Mcp-Session-Id");
   if (req.method === "OPTIONS") {
     res.sendStatus(204);
@@ -37,18 +46,52 @@ app.get("/healthz", (_req, res) => {
 // RFC 9728 Protected Resource Metadata — lets OAuth-aware MCP clients (e.g.
 // ChatGPT, Claude) discover that WorkOS AuthKit is the authorization server
 // for this resource. Only served once auth is actually configured.
-app.get("/.well-known/oauth-protected-resource", (_req, res) => {
+app.get(
+  ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"],
+  (_req, res) => {
+    if (!authEnabled) {
+      res.status(404).json({ error: "oauth_not_configured" });
+      return;
+    }
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(protectedResourceMetadata());
+  },
+);
+
+// Compatibility endpoint for older MCP clients that look for authorization
+// server metadata on the resource server instead of following RFC 9728.
+// AuthKit remains the source of truth for this document.
+app.get("/.well-known/oauth-authorization-server", async (_req, res) => {
   if (!authEnabled) {
     res.status(404).json({ error: "oauth_not_configured" });
     return;
   }
-  res.json(protectedResourceMetadata());
+
+  try {
+    const upstream = await fetch(authorizationServerMetadataUrl());
+    if (!upstream.ok) {
+      throw new Error(`AuthKit metadata request failed with status ${upstream.status}`);
+    }
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(await upstream.json());
+  } catch (error) {
+    console.error("Error fetching AuthKit authorization server metadata:", error);
+    res.status(502).json({ error: "authorization_server_metadata_unavailable" });
+  }
 });
 
 function sendUnauthorized(res: express.Response, reason: string) {
   res
     .status(401)
-    .set("WWW-Authenticate", `Bearer resource_metadata="${protectedResourceMetadataUrl()}"`)
+    .set(
+      "WWW-Authenticate",
+      [
+        'Bearer error="unauthorized"',
+        'error_description="Authorization needed"',
+        `resource_metadata="${protectedResourceMetadataUrl()}"`,
+      ].join(", "),
+    )
     .json({
       jsonrpc: "2.0",
       error: { code: -32001, message: `Unauthorized: ${reason}` },
@@ -56,16 +99,22 @@ function sendUnauthorized(res: express.Response, reason: string) {
     });
 }
 
-// Streamable HTTP transport, run statelessly: a fresh MCP server + transport
-// is created per request, so there is no session state to manage across
-// Render's ephemeral/scaled instances.
-app.post("/mcp", async (req, res) => {
+// Authenticate every MCP transport method. Some clients probe the GET route
+// before sending an initialize POST; that probe must receive the same OAuth
+// challenge or the client cannot discover the authorization server.
+app.use("/mcp", async (req, res, next) => {
   const tokenCheck = await verifyBearerToken(req.header("authorization"));
   if (!tokenCheck.ok) {
     sendUnauthorized(res, tokenCheck.reason);
     return;
   }
+  next();
+});
 
+// Streamable HTTP transport, run statelessly: a fresh MCP server + transport
+// is created per request, so there is no session state to manage across
+// Render's ephemeral/scaled instances.
+app.post("/mcp", async (req, res) => {
   const server = createServer();
   try {
     const transport = new StreamableHTTPServerTransport({
