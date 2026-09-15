@@ -1,4 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import type { SupportIdentity } from "@supportbridge/sdk";
 
 /**
  * OAuth 2.1 resource-server support for this MCP server, using WorkOS AuthKit
@@ -46,7 +48,23 @@ export function authorizationServerMetadataUrl(): string {
   return `${issuer}/.well-known/oauth-authorization-server`;
 }
 
-export type TokenCheck = { ok: true } | { ok: false; reason: string };
+export type TokenCheck =
+  | { ok: true; authInfo?: AuthInfo }
+  | { ok: false; reason: string };
+
+function stringClaim(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function tokenScopes(payload: Record<string, unknown>): string[] {
+  if (typeof payload.scope === "string") {
+    return payload.scope.split(" ").filter(Boolean);
+  }
+  if (Array.isArray(payload.scp)) {
+    return payload.scp.filter((scope): scope is string => typeof scope === "string");
+  }
+  return [];
+}
 
 export async function verifyBearerToken(authorizationHeader: string | undefined): Promise<TokenCheck> {
   if (!authEnabled) {
@@ -61,9 +79,46 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
     // WorkOS issues the configured Resource Indicator as the access token's
     // `aud` claim. Checking it prevents a token minted for another service in
     // the same WorkOS environment from being replayed against this MCP.
-    await jwtVerify(token, jwks!, { issuer, audience: resourceUrl });
-    return { ok: true };
+    const { payload } = await jwtVerify(token, jwks!, { issuer, audience: resourceUrl });
+    const subject = stringClaim(payload.sub);
+    const clientId = stringClaim(payload.client_id) ?? stringClaim(payload.azp) ?? "unknown-client";
+
+    return {
+      ok: true,
+      authInfo: {
+        token,
+        clientId,
+        scopes: tokenScopes(payload),
+        expiresAt: payload.exp,
+        resource: new URL(resourceUrl!),
+        extra: {
+          subject,
+          sessionId: stringClaim(payload.sid),
+          organizationId: stringClaim(payload.org_id),
+          workspaceId: stringClaim(payload.workspace_id),
+          accountId: stringClaim(payload.account_id),
+        },
+      },
+    };
   } catch {
     return { ok: false, reason: "invalid_token" };
   }
+}
+
+/** Resolve SupportBridge identity only from claims in a verified MCP access token. */
+export function identifyAuthenticatedUser(context?: unknown): SupportIdentity | undefined {
+  const authInfo = (context as { authInfo?: AuthInfo } | undefined)?.authInfo;
+  const extra = authInfo?.extra;
+  const userId = stringClaim(extra?.subject);
+  if (!userId) {
+    return undefined;
+  }
+
+  return {
+    userId,
+    accountId: stringClaim(extra?.accountId),
+    workspaceId: stringClaim(extra?.workspaceId),
+    organizationId: stringClaim(extra?.organizationId),
+    sessionId: stringClaim(extra?.sessionId),
+  };
 }

@@ -1,6 +1,7 @@
 import express from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createServer } from "./server.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { createServer, supportBridgeEnabled } from "./server.js";
 import {
   authEnabled,
   authorizationServerMetadataUrl,
@@ -36,6 +37,7 @@ app.get("/", (_req, res) => {
     status: "ok",
     mcpEndpoint: "/mcp",
     authEnabled,
+    supportBridgeEnabled,
   });
 });
 
@@ -108,6 +110,9 @@ app.use("/mcp", async (req, res, next) => {
     sendUnauthorized(res, tokenCheck.reason);
     return;
   }
+  if (tokenCheck.authInfo) {
+    (req as typeof req & { auth: AuthInfo }).auth = tokenCheck.authInfo;
+  }
   next();
 });
 
@@ -115,14 +120,20 @@ app.use("/mcp", async (req, res, next) => {
 // is created per request, so there is no session state to manage across
 // Render's ephemeral/scaled instances.
 app.post("/mcp", async (req, res) => {
-  const server = createServer();
+  const { server, support } = createServer();
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await Promise.allSettled([transport.close(), server.close(), support?.close()]);
+  };
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+
   try {
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
     res.on("close", () => {
-      transport.close();
-      server.close();
+      void close();
     });
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
@@ -135,6 +146,7 @@ app.post("/mcp", async (req, res) => {
         id: null,
       });
     }
+    await close();
   }
 });
 

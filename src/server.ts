@@ -1,10 +1,26 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  SupportBridge,
+  type McpToolHandler,
+  type SupportBridgeInstallation,
+} from "@supportbridge/sdk";
 import { z } from "zod";
+import { identifyAuthenticatedUser } from "./auth.js";
 import { companies, type Company, type Industry } from "./data.js";
 
 const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
 
 const companiesById = new Map(companies.map((c) => [c.id, c]));
+
+const supportBridgeSource = process.env.SUPPORTBRIDGE_SOURCE;
+const supportBridgeApiKey = process.env.SUPPORTBRIDGE_API_KEY;
+export const supportBridgeEnabled = Boolean(supportBridgeSource && supportBridgeApiKey);
+
+if (Boolean(supportBridgeSource) !== Boolean(supportBridgeApiKey)) {
+  console.warn(
+    "SupportBridge is disabled: set both SUPPORTBRIDGE_SOURCE and SUPPORTBRIDGE_API_KEY.",
+  );
+}
 
 function formatValuation(valuationUsd: number): string {
   if (valuationUsd >= 1_000_000_000) {
@@ -37,7 +53,12 @@ function matchesQuery(c: Company, query: string): boolean {
  * Builds a fresh McpServer instance with every tool registered.
  * A new instance is created per request in stateless HTTP mode (see index.ts).
  */
-export function createServer(): McpServer {
+export interface ServerInstallation {
+  server: McpServer;
+  support?: SupportBridgeInstallation;
+}
+
+export function createServer(): ServerInstallation {
   const server = new McpServer(
     {
       name: "fake-company-directory",
@@ -56,6 +77,21 @@ export function createServer(): McpServer {
     },
   );
 
+  const support = supportBridgeEnabled
+    ? SupportBridge.install(server, {
+        source: supportBridgeSource!,
+        baseUrl:
+          process.env.SUPPORTBRIDGE_URL || "https://supportbridge-staging.onrender.com",
+        apiKey: supportBridgeApiKey!,
+        identify: identifyAuthenticatedUser,
+      })
+    : undefined;
+
+  const instrument = <TArguments>(
+    name: string,
+    handler: McpToolHandler<TArguments>,
+  ) => (support ? support.instrumentTool(name, handler) : handler);
+
   // --- ChatGPT Connectors-compatible tools (search + fetch) ---
   // https://platform.openai.com/docs/mcp — connectors expect a `search` tool
   // that returns result ids, and a `fetch` tool that resolves an id to a
@@ -71,7 +107,7 @@ export function createServer(): McpServer {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
       },
     },
-    async ({ query }) => {
+    instrument("search", async ({ query }) => {
       const results = companies
         .filter((c) => matchesQuery(c, query))
         .map((c) => ({
@@ -88,7 +124,7 @@ export function createServer(): McpServer {
           },
         ],
       };
-    },
+    }),
   );
 
   server.registerTool(
@@ -100,7 +136,7 @@ export function createServer(): McpServer {
         id: z.string().describe("Company id, e.g. 'co-001'"),
       },
     },
-    async ({ id }) => {
+    instrument("fetch", async ({ id }) => {
       const company = companiesById.get(id);
       if (!company) {
         throw new Error(`No company found with id "${id}"`);
@@ -127,7 +163,7 @@ export function createServer(): McpServer {
           },
         ],
       };
-    },
+    }),
   );
 
   // --- General-purpose tools for Claude Desktop and other MCP clients ---
@@ -158,42 +194,45 @@ export function createServer(): McpServer {
           .describe("Maximum number of companies to return (default 25, max 100)"),
       },
     },
-    async ({ industry, location, minValuationUsd, maxValuationUsd, limit }) => {
-      let results = companies;
+    instrument(
+      "list_companies",
+      async ({ industry, location, minValuationUsd, maxValuationUsd, limit }) => {
+        let results = companies;
 
-      if (industry) {
-        results = results.filter((c) => c.industry === industry);
-      }
-      if (location) {
-        const loc = location.toLowerCase();
-        results = results.filter((c) => c.location.toLowerCase().includes(loc));
-      }
-      if (minValuationUsd !== undefined) {
-        results = results.filter((c) => c.valuationUsd >= minValuationUsd);
-      }
-      if (maxValuationUsd !== undefined) {
-        results = results.filter((c) => c.valuationUsd <= maxValuationUsd);
-      }
+        if (industry) {
+          results = results.filter((c) => c.industry === industry);
+        }
+        if (location) {
+          const loc = location.toLowerCase();
+          results = results.filter((c) => c.location.toLowerCase().includes(loc));
+        }
+        if (minValuationUsd !== undefined) {
+          results = results.filter((c) => c.valuationUsd >= minValuationUsd);
+        }
+        if (maxValuationUsd !== undefined) {
+          results = results.filter((c) => c.valuationUsd <= maxValuationUsd);
+        }
 
-      const truncated = results.slice(0, limit);
+        const truncated = results.slice(0, limit);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                count: truncated.length,
-                totalMatches: results.length,
-                companies: truncated,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    },
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  count: truncated.length,
+                  totalMatches: results.length,
+                  companies: truncated,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      },
+    ),
   );
 
   server.registerTool(
@@ -205,7 +244,7 @@ export function createServer(): McpServer {
         id: z.string(),
       },
     },
-    async ({ id }) => {
+    instrument("get_company", async ({ id }) => {
       const company = companiesById.get(id);
       if (!company) {
         return {
@@ -216,7 +255,7 @@ export function createServer(): McpServer {
       return {
         content: [{ type: "text", text: JSON.stringify(company, null, 2) }],
       };
-    },
+    }),
   );
 
   server.registerTool(
@@ -226,7 +265,7 @@ export function createServer(): McpServer {
       description: "List the industries represented in the company directory, with counts.",
       inputSchema: {},
     },
-    async () => {
+    instrument("list_industries", async () => {
       const counts = INDUSTRIES.map((industry) => ({
         industry,
         count: companies.filter((c) => c.industry === industry).length,
@@ -234,8 +273,8 @@ export function createServer(): McpServer {
       return {
         content: [{ type: "text", text: JSON.stringify(counts, null, 2) }],
       };
-    },
+    }),
   );
 
-  return server;
+  return { server, support };
 }
