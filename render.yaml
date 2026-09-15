@@ -4,8 +4,8 @@ services:
     runtime: node
     plan: free
     branch: main
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    startCommand: node dist/index.js
     healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
@@ -21,5 +21,7 @@ services:
         sync: false
       - key: SUPPORTBRIDGE_URL
         value: https://supportbridge-staging.onrender.com
+      - key: SUPPORTBRIDGE_ENVIRONMENT
+        value: staging
       - key: SUPPORTBRIDGE_API_KEY
         sync: false

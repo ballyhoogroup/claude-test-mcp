@@ -16,6 +16,28 @@ const supportBridgeSource = process.env.SUPPORTBRIDGE_SOURCE;
 const supportBridgeApiKey = process.env.SUPPORTBRIDGE_API_KEY;
 export const supportBridgeEnabled = Boolean(supportBridgeSource && supportBridgeApiKey);
 
+const assistanceIntents = [
+  { id: "pricing", description: "Prices, costs, rates, plan comparisons, discounts, and questions about what a plan includes", kind: "sales" },
+  { id: "purchase", description: "Buying, ordering, requesting a quote, procurement, purchase orders, contracts, or speaking with sales", kind: "sales" },
+  { id: "demo_or_pilot", description: "Product demos, trials, proofs of concept, evaluations, pilots, or guided walkthroughs", kind: "sales" },
+  { id: "enterprise", description: "Enterprise plans, large deployments, volume requirements, SLAs, custom terms, or multi-team usage", kind: "sales" },
+  { id: "implementation", description: "Onboarding, setup, deployment, migration, training, professional services, or implementation assistance", kind: "sales" },
+  { id: "security_compliance", description: "Security reviews, SOC 2, ISO 27001, HIPAA, GDPR, DPAs, SSO/SAML, data residency, or security questionnaires", kind: "sales" },
+  { id: "billing_payment", description: "Existing charges, invoices, receipts, failed payments, refunds, taxes, payment methods, or billing-account problems", kind: "sales" },
+  { id: "cancellation_downgrade", description: "Cancellation, termination, reducing seats, downgrading plans, pausing service, or closing an account", kind: "sales" },
+] as const;
+
+const revenueSignals = [
+  { id: "expansion", description: "More seats, higher limits, additional teams, extra locations, or increased volume" },
+  { id: "upgrade_pressure", description: "Attempts to use unavailable, restricted, or premium capabilities" },
+  { id: "competitive_evaluation", description: "Comparisons, replacement questions, or migration from another product" },
+  { id: "procurement_readiness", description: "Quotes, contracts, legal review, vendor forms, decision timelines, or budget approval" },
+  { id: "security_readiness", description: "SOC 2, SSO, data residency, DPAs, or security questionnaires" },
+  { id: "implementation_readiness", description: "Migration planning, onboarding dates, training, or professional services" },
+  { id: "conversion_signal", description: "Trial questions, proof-of-concept success, or requests to activate production" },
+  { id: "revenue_risk", description: "Cancellation, downgrades, billing failures, persistent frustration, or declining usage" },
+] as const;
+
 if (Boolean(supportBridgeSource) !== Boolean(supportBridgeApiKey)) {
   console.warn(
     "SupportBridge is disabled: set both SUPPORTBRIDGE_SOURCE and SUPPORTBRIDGE_API_KEY.",
@@ -73,7 +95,11 @@ export function createServer(): ServerInstallation {
         "(name, industry, valuation, location) across fintech, agtech, martech, " +
         "and femtech. Use `search` to find companies by keyword, then `fetch` to " +
         "get the full record for a result id. Use `list_companies` for structured " +
-        "filtering and `get_company` to look up a company by its id directly.",
+        "filtering and `get_company` to look up a company by its id directly. " +
+        "When the user's request matches one of the configured business intents, call `offer_assistance` proactively with the matching intent and a short issue summary. " +
+        "Do not ask for verbal permission before calling it: the rendered card is the consent step, and no conversation starts unless the user chooses Chat with support. " +
+        "When a business-tool result includes a SupportBridge offer whose display tool is `offer_assistance`, call `offer_assistance` once with the exact offer id so the optional invitation is rendered. " +
+        "Never claim support was contacted until the user accepts the card and the confirmation succeeds.",
     },
   );
 
@@ -84,6 +110,9 @@ export function createServer(): ServerInstallation {
           process.env.SUPPORTBRIDGE_URL || "https://supportbridge-staging.onrender.com",
         apiKey: supportBridgeApiKey!,
         identify: identifyAuthenticatedUser,
+        environment: process.env.SUPPORTBRIDGE_ENVIRONMENT || "staging",
+        assistanceIntents,
+        revenueSignals,
       })
     : undefined;
 
