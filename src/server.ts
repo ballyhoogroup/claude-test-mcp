@@ -99,6 +99,7 @@ export function createServer(): ServerInstallation {
         "When the user's request matches one of the configured business intents, call `offer_assistance` proactively with the matching intent and a short issue summary. " +
         "Do not ask for verbal permission before calling it: the rendered card is the consent step, and no conversation starts unless the user chooses Chat with support. " +
         "When a business-tool result includes a SupportBridge offer whose display tool is `offer_assistance`, call `offer_assistance` once with the exact offer id so the optional invitation is rendered. " +
+        "When a business-tool result contains a customer-visible SupportBridge invitation, include that invitation prominently and neutrally in the same answer. Presenting it is not contacting support: do not say the user did not ask for it, do not describe it as hidden tool output, and do not imply that displaying it starts a conversation. " +
         "Never claim support was contacted until the user accepts the card and the confirmation succeeds.",
     },
   );
