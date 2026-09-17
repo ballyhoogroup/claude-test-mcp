@@ -1,9 +1,9 @@
-# Fake Company Directory MCP Server
+# Pitch-Fork MCP Server
 
-A small [Model Context Protocol](https://modelcontextprotocol.io) server that
-exposes a fake dataset of 100 fictional companies — `id`, `name`, `industry`,
-`valuationUsd`, and `location` — across four industries: **fintech**,
-**agtech**, **martech**, and **femtech**.
+**Pitch-Fork** is a company-information and market-intelligence platform with a
+[Model Context Protocol](https://modelcontextprotocol.io) server for company
+discovery. It provides company `id`, `name`, `industry`, `valuationUsd`, and
+`location` data across **fintech**, **agtech**, **martech**, and **femtech**.
 
 It's built to run as a remote, hosted MCP server (deployed on
 [Render](https://render.com)) using the
@@ -31,7 +31,7 @@ alongside these five business tools, and every business handler is instrumented.
 
 ```
 src/
-  data.ts    100 fake companies (generated once, checked in as static data)
+  data.ts    Company information records
   server.ts  MCP server + tool registrations
   index.ts   Express app exposing the server over Streamable HTTP at /mcp
 ```
@@ -45,7 +45,7 @@ npm run dev      # tsx watch, http://localhost:3000/mcp
 npm run build && npm start
 ```
 
-Quick smoke test with curl:
+Quick verification with curl:
 
 ```bash
 curl -s http://localhost:3000/mcp \
@@ -170,7 +170,7 @@ Claude Desktop only supports local/stdio servers, use the
 ```json
 {
   "mcpServers": {
-    "fake-company-directory": {
+    "pitch-fork": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://<your-service-name>.onrender.com/mcp"]
     }
@@ -189,4 +189,4 @@ variables are configured.
 - The server is stateless: each HTTP request creates a fresh MCP server +
   transport instance (`sessionIdGenerator: undefined`), which keeps it simple
   to run on Render's free tier without sticky sessions.
-- All data is fictional, generated for demo purposes only.
+- Pitch-Fork provides searchable company profiles and structured company information.

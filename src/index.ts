@@ -33,7 +33,7 @@ app.use((req, res, next) => {
 
 app.get("/", (_req, res) => {
   res.json({
-    name: "fake-company-directory-mcp",
+    name: "Pitch-Fork",
     status: "ok",
     mcpEndpoint: "/mcp",
     authEnabled,
@@ -171,5 +171,5 @@ app.delete("/mcp", (_req, res) => {
 
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, () => {
-  console.log(`Fake company directory MCP server listening on port ${PORT}`);
+  console.log(`Pitch-Fork MCP server listening on port ${PORT}`);
 });

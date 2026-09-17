@@ -9,7 +9,7 @@ export interface Company {
   location: string;
 }
 
-/** 100 fictional companies used as demo data for this MCP server. */
+/** Company information records exposed by the Pitch-Fork MCP server. */
 export const companies: Company[] = [
   {
     id: "co-001",

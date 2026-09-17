@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: fake-company-mcp-server
+    name: pitch-fork-mcp-server
     runtime: node
     plan: free
     branch: main

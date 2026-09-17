@@ -83,7 +83,7 @@ export interface ServerInstallation {
 export function createServer(): ServerInstallation {
   const server = new McpServer(
     {
-      name: "fake-company-directory",
+      name: "Pitch-Fork",
       version: "1.0.0",
     },
     {
@@ -91,7 +91,7 @@ export function createServer(): ServerInstallation {
         tools: {},
       },
       instructions:
-        "Provides read-only access to a directory of 100 fictional companies " +
+        "Pitch-Fork provides read-only access to company information and market intelligence " +
         "(name, industry, valuation, location) across fintech, agtech, martech, " +
         "and femtech. Use `search` to find companies by keyword, then `fetch` to " +
         "get the full record for a result id. Use `list_companies` for structured " +
@@ -139,7 +139,7 @@ export function createServer(): ServerInstallation {
     {
       title: "Search companies",
       description:
-        "Search the fake company directory by name, industry (fintech, agtech, " +
+        "Search the Pitch-Fork company directory by name, industry (fintech, agtech, " +
         "martech, femtech), or location. Returns matching result ids and titles.",
       inputSchema: {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
@@ -151,7 +151,7 @@ export function createServer(): ServerInstallation {
         .map((c) => ({
           id: c.id,
           title: `${c.name} — ${c.industry}, ${c.location}`,
-          url: `urn:fake-company:${c.id}`,
+          url: `urn:pitch-fork:company:${c.id}`,
         }));
 
       return {
@@ -184,7 +184,7 @@ export function createServer(): ServerInstallation {
         id: company.id,
         title: company.name,
         text: toRecordText(company),
-        url: `urn:fake-company:${company.id}`,
+        url: `urn:pitch-fork:company:${company.id}`,
         metadata: {
           name: company.name,
           industry: company.industry,

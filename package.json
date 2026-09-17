@@ -1,7 +1,7 @@
 {
-  "name": "fake-company-mcp-server",
+  "name": "pitch-fork-mcp-server",
   "version": "1.0.0",
-  "description": "A remote MCP server exposing a fake dataset of 100 companies (name, industry, valuation, location) for ChatGPT Connectors, Claude Desktop, and any MCP-compatible client.",
+  "description": "Pitch-Fork is a remote MCP server for company discovery and market intelligence, providing company names, industries, valuations, and locations to ChatGPT, Claude Desktop, and other MCP-compatible clients.",
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "main": "dist/index.js",
