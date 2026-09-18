@@ -24,8 +24,9 @@ so it works with:
 | `get_company` | Look up one company by its `id` (e.g. `co-001`). |
 | `list_industries` | List the four industries with company counts. |
 
-When SupportBridge is configured, its streamlined support tools are installed
-alongside these five business tools, and every business handler is instrumented.
+When SupportBridge is configured, its default streamlined support tools are
+installed alongside these five business tools, and each business handler is
+instrumented in the SDK's default `assist` mode.
 
 ## Project layout
 
@@ -113,19 +114,24 @@ returning the resource metadata that points MCP clients at AuthKit.
 
 ### 3. Configure SupportBridge
 
-Add these variables to the same Render service:
+Copy `.env.example` for local reference, then inject all three variables into
+the server process before it starts. This project does not load `.env` files
+itself. For Render, open the service's **Environment** settings and set:
 
 | Key | Value |
 | --- | --- |
-| `SUPPORTBRIDGE_SOURCE` | The source name registered for this MCP in SupportBridge |
-| `SUPPORTBRIDGE_URL` | `https://supportbridge-staging.onrender.com` (or your SupportBridge deployment) |
-| `SUPPORTBRIDGE_API_KEY` | The SupportBridge SDK API key (store as a secret) |
+| `SUPPORTBRIDGE_CONTROL_PLANE_URL` | `https://supportbridge-development.onrender.com` |
+| `SUPPORTBRIDGE_API_KEY` | Set privately; do not commit it |
+| `SUPPORTBRIDGE_MCP_DEPLOYMENT_ID` | The vendor commit SHA or deployment identifier |
 
-SupportBridge activates only when both `SUPPORTBRIDGE_SOURCE` and
-`SUPPORTBRIDGE_API_KEY` are present. It installs the default streamlined tool
-profile, instruments all five company-directory tools, and resolves customer
-identity only from the WorkOS token already verified by this server. Do not
-register legacy support tools separately.
+SupportBridge remains disabled when none are present. If only some are set,
+the server reports a configuration warning without logging their values. The
+server maps the control-plane URL and API key explicitly into the SDK and sends
+the deployment identifier as authenticated protocol metadata. SDK capability
+metadata includes `optional-assistance-v1` and `durable-offer-delivery-v1`. The
+authenticated identity adapter sends only the verified OAuth subject and any
+available account, workspace, organization, and session identifiers; it sends
+no name or email. Requests to an open server remain anonymous.
 
 ### 4. How the flow works
 

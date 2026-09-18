@@ -125,7 +125,12 @@ app.post("/mcp", async (req, res) => {
   const close = async () => {
     if (closed) return;
     closed = true;
-    await Promise.allSettled([transport.close(), server.close(), support?.close()]);
+    // SupportBridge removes its owned tools/resources while the MCP connection
+    // is still available, then the request-scoped transport can shut down.
+    if (support) {
+      await Promise.allSettled([support.close()]);
+    }
+    await Promise.allSettled([transport.close(), server.close()]);
   };
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
