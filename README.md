@@ -26,7 +26,7 @@ so it works with:
 
 When SupportBridge is configured, its default streamlined support tools are
 installed alongside these five business tools, and each business handler is
-instrumented in the SDK's default `assist` mode.
+instrumented in `observe-only` mode. Support offers are not enabled.
 
 ## Project layout
 
@@ -114,23 +114,26 @@ returning the resource metadata that points MCP clients at AuthKit.
 
 ### 3. Configure SupportBridge
 
-Copy `.env.example` for local reference, then inject all three variables into
+Copy `.env.example` for local reference, then inject these variables into
 the server process before it starts. This project does not load `.env` files
 itself. For Render, open the service's **Environment** settings and set:
 
 | Key | Value |
 | --- | --- |
-| `SUPPORTBRIDGE_CONTROL_PLANE_URL` | Optional; defaults to `https://supportbridge-development.onrender.com` |
 | `SUPPORTBRIDGE_API_KEY` | Set privately; do not commit it |
+| `SUPPORTBRIDGE_SOURCE` | `claude-test-mcp` |
+| `SUPPORTBRIDGE_URL` | SupportBridge control-plane URL |
+| `SUPPORTBRIDGE_ENVIRONMENT` | `development` |
+| `SUPPORTBRIDGE_MODE` | `observe-only` |
 
 SupportBridge remains disabled until `SUPPORTBRIDGE_API_KEY` is set. The server
-uses the configured control-plane URL or the development endpoint shown above.
-It maps the URL and API key explicitly into the SDK. SDK
+uses the SDK's conventional environment variables. SDK
 capability metadata includes `optional-assistance-v1` and
 `durable-offer-delivery-v1`. The
-authenticated identity adapter sends only the verified OAuth subject and any
-available account, workspace, organization, and session identifiers; it sends
-no name or email. Requests to an open server remain anonymous.
+authenticated WorkOS adapter sends the verified OAuth subject, organization,
+and session identifiers. It may also send the approved `name` and verified
+`email` claims when WorkOS includes them in the validated token. Requests to an
+open server remain anonymous.
 
 ### 4. How the flow works
 

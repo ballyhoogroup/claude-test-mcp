@@ -5,13 +5,10 @@ import {
   type SupportBridgeInstallation,
 } from "@supportbridge/sdk";
 import { z } from "zod";
-import { identifyAuthenticatedUser } from "./auth.js";
+import { identifyWorkOSUser } from "./auth.js";
 import { companies, type Company, type Industry } from "./data.js";
 
 const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
-const DEFAULT_SUPPORTBRIDGE_CONTROL_PLANE_URL =
-  "https://supportbridge-development.onrender.com";
-
 const companiesById = new Map(companies.map((c) => [c.id, c]));
 
 function hasSupportBridgeConfiguration(env: NodeJS.ProcessEnv): boolean {
@@ -20,7 +17,7 @@ function hasSupportBridgeConfiguration(env: NodeJS.ProcessEnv): boolean {
 
 export const supportBridgeEnabled = hasSupportBridgeConfiguration(process.env);
 
-if (!supportBridgeEnabled && process.env.SUPPORTBRIDGE_CONTROL_PLANE_URL) {
+if (!supportBridgeEnabled && process.env.SUPPORTBRIDGE_URL) {
   console.warn("SupportBridge is disabled: SUPPORTBRIDGE_API_KEY must be set.");
 }
 
@@ -85,15 +82,10 @@ export function createServer(options: {
   );
 
   const support = enableSupportBridge
-    ? SupportBridge.install(server, {
-        apiKey: env.SUPPORTBRIDGE_API_KEY!,
-        baseUrl:
-          env.SUPPORTBRIDGE_CONTROL_PLANE_URL ??
-          DEFAULT_SUPPORTBRIDGE_CONTROL_PLANE_URL,
-        source: "pitch-fork",
-        environment: "development",
-        mode: "assist",
-        identify: identifyAuthenticatedUser,
+    ? SupportBridge.installFromEnv(server, {
+        env,
+        mode: "observe-only",
+        identify: identifyWorkOSUser,
         ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
         ...(options.supportBridgeFetch
           ? { client: { http: { fetch: options.supportBridgeFetch } } }

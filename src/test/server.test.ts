@@ -3,7 +3,41 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { HttpTelemetryTransport, SDK_VERSION } from "@supportbridge/sdk";
+import { identifyWorkOSUser } from "../auth.js";
 import { createServer } from "../server.js";
+
+test("authenticated WorkOS AuthInfo is converted to SupportBridge identity", () => {
+  const identity = identifyWorkOSUser({
+    authInfo: {
+      token: "test-only-verified-token",
+      clientId: "test-client",
+      scopes: [],
+      extra: {
+        subject: "user_01TEST",
+        organizationId: "org_01TEST",
+        sessionId: "session_01TEST",
+        name: "Test User",
+        email: "test.user@example.invalid",
+        emailVerified: true,
+      },
+    },
+  });
+
+  assert.deepEqual(identity, {
+    userId: "oauth:user_01TEST",
+    organizationId: "org_01TEST",
+    accountId: "workos:org_01TEST",
+    sessionId: "session_01TEST",
+    traits: {
+      name: "Test User",
+      email: "test.user@example.invalid",
+    },
+  });
+});
+
+test("missing WorkOS AuthInfo produces no SupportBridge identity", () => {
+  assert.equal(identifyWorkOSUser({}), undefined);
+});
 
 async function connectedClient(options: Parameters<typeof createServer>[0] = {}) {
   const { server, support } = createServer(options);
@@ -76,8 +110,9 @@ test("business tools fail open when SupportBridge is not configured", async () =
 test("instrumented business tools fail open during a control-plane outage", async () => {
   const { client, server, support } = await connectedClient({
     env: {
-      SUPPORTBRIDGE_CONTROL_PLANE_URL: "https://supportbridge.invalid",
+      SUPPORTBRIDGE_URL: "https://supportbridge.invalid",
       SUPPORTBRIDGE_API_KEY: "test-only-secret",
+      SUPPORTBRIDGE_SOURCE: "claude-test-mcp",
     },
     supportBridgeFetch: async () => {
       throw new Error("simulated network outage");
@@ -95,9 +130,12 @@ test("instrumented business tools fail open during a control-plane outage", asyn
   }
 });
 
-test("SupportBridge uses the default control plane when only the API key is configured", async () => {
+test("SupportBridge uses the default control plane when required identity is configured", async () => {
   const { server, support } = createServer({
-    env: { SUPPORTBRIDGE_API_KEY: "test-only-secret" },
+    env: {
+      SUPPORTBRIDGE_API_KEY: "test-only-secret",
+      SUPPORTBRIDGE_SOURCE: "claude-test-mcp",
+    },
     supportBridgeFetch: async () => {
       throw new Error("simulated network outage");
     },

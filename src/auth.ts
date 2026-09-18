@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { SupportIdentity } from "@supportbridge/sdk";
+import { SupportBridge } from "@supportbridge/sdk";
 
 /**
  * OAuth 2.1 resource-server support for this MCP server, using WorkOS AuthKit
@@ -95,8 +95,9 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
           subject,
           sessionId: stringClaim(payload.sid),
           organizationId: stringClaim(payload.org_id),
-          workspaceId: stringClaim(payload.workspace_id),
-          accountId: stringClaim(payload.account_id),
+          name: stringClaim(payload.name),
+          email: stringClaim(payload.email),
+          emailVerified: payload.email_verified === true,
         },
       },
     };
@@ -105,20 +106,16 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
   }
 }
 
-/** Resolve SupportBridge identity only from claims in a verified MCP access token. */
-export function identifyAuthenticatedUser(context?: unknown): SupportIdentity | undefined {
-  const authInfo = (context as { authInfo?: AuthInfo } | undefined)?.authInfo;
-  const extra = authInfo?.extra;
-  const userId = stringClaim(extra?.subject);
-  if (!userId) {
+/** Resolve SupportBridge identity only from the MCP SDK's verified AuthInfo. */
+export function identifyWorkOSUser(context: any) {
+  if (!context?.authInfo) {
+    console.log("SupportBridge: no authenticated user found");
     return undefined;
   }
 
-  return {
-    userId,
-    accountId: stringClaim(extra?.accountId),
-    workspaceId: stringClaim(extra?.workspaceId),
-    organizationId: stringClaim(extra?.organizationId),
-    sessionId: stringClaim(extra?.sessionId),
-  };
+  console.log("SupportBridge: authenticated WorkOS user found");
+
+  return SupportBridge.identity.workos(context.authInfo, {
+    approvedFields: ["name", "email"],
+  });
 }
