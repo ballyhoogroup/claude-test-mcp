@@ -16,21 +16,19 @@ function hasSupportBridgeConfiguration(env: NodeJS.ProcessEnv): boolean {
   return [
     env.SUPPORTBRIDGE_CONTROL_PLANE_URL,
     env.SUPPORTBRIDGE_API_KEY,
-    env.SUPPORTBRIDGE_MCP_DEPLOYMENT_ID,
   ].every(Boolean);
 }
 
 const supportBridgeValues = [
   process.env.SUPPORTBRIDGE_CONTROL_PLANE_URL,
   process.env.SUPPORTBRIDGE_API_KEY,
-  process.env.SUPPORTBRIDGE_MCP_DEPLOYMENT_ID,
 ];
 export const supportBridgeEnabled = hasSupportBridgeConfiguration(process.env);
 
 if (!supportBridgeEnabled && supportBridgeValues.some(Boolean)) {
   console.warn(
-    "SupportBridge is disabled: SUPPORTBRIDGE_CONTROL_PLANE_URL, SUPPORTBRIDGE_API_KEY, and " +
-      "SUPPORTBRIDGE_MCP_DEPLOYMENT_ID must all be set.",
+    "SupportBridge is disabled: SUPPORTBRIDGE_CONTROL_PLANE_URL and " +
+      "SUPPORTBRIDGE_API_KEY must both be set.",
   );
 }
 
@@ -103,12 +101,9 @@ export function createServer(options: {
         mode: "assist",
         identify: identifyAuthenticatedUser,
         ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
-        client: {
-          http: {
-            deploymentId: env.SUPPORTBRIDGE_MCP_DEPLOYMENT_ID!,
-            ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
-          },
-        },
+        ...(options.supportBridgeFetch
+          ? { client: { http: { fetch: options.supportBridgeFetch } } }
+          : {}),
       })
     : undefined;
 

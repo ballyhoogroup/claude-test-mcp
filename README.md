@@ -122,13 +122,12 @@ itself. For Render, open the service's **Environment** settings and set:
 | --- | --- |
 | `SUPPORTBRIDGE_CONTROL_PLANE_URL` | `https://supportbridge-development.onrender.com` |
 | `SUPPORTBRIDGE_API_KEY` | Set privately; do not commit it |
-| `SUPPORTBRIDGE_MCP_DEPLOYMENT_ID` | The vendor commit SHA or deployment identifier |
 
 SupportBridge remains disabled when none are present. If only some are set,
 the server reports a configuration warning without logging their values. The
-server maps the control-plane URL and API key explicitly into the SDK and sends
-the deployment identifier as authenticated protocol metadata. SDK capability
-metadata includes `optional-assistance-v1` and `durable-offer-delivery-v1`. The
+server maps the control-plane URL and API key explicitly into the SDK. SDK
+capability metadata includes `optional-assistance-v1` and
+`durable-offer-delivery-v1`. The
 authenticated identity adapter sends only the verified OAuth subject and any
 available account, workspace, organization, and session identifiers; it sends
 no name or email. Requests to an open server remain anonymous.

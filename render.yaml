@@ -20,5 +20,3 @@ services:
         value: https://supportbridge-development.onrender.com
       - key: SUPPORTBRIDGE_API_KEY
         sync: false
-      - key: SUPPORTBRIDGE_MCP_DEPLOYMENT_ID
-        sync: false

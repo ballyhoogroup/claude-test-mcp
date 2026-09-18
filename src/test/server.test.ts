@@ -78,7 +78,6 @@ test("instrumented business tools fail open during a control-plane outage", asyn
     env: {
       SUPPORTBRIDGE_CONTROL_PLANE_URL: "https://supportbridge.invalid",
       SUPPORTBRIDGE_API_KEY: "test-only-secret",
-      SUPPORTBRIDGE_MCP_DEPLOYMENT_ID: "deployment-test",
     },
     supportBridgeFetch: async () => {
       throw new Error("simulated network outage");
