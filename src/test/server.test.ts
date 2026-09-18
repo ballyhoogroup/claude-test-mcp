@@ -94,3 +94,18 @@ test("instrumented business tools fail open during a control-plane outage", asyn
     await server.close();
   }
 });
+
+test("SupportBridge uses the default control plane when only the API key is configured", async () => {
+  const { server, support } = createServer({
+    env: { SUPPORTBRIDGE_API_KEY: "test-only-secret" },
+    supportBridgeFetch: async () => {
+      throw new Error("simulated network outage");
+    },
+  });
+  try {
+    assert.ok(support, "SupportBridge should be installed with only its API key");
+  } finally {
+    if (support) await support.close();
+    await server.close();
+  }
+});

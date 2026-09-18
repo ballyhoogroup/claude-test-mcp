@@ -120,12 +120,12 @@ itself. For Render, open the service's **Environment** settings and set:
 
 | Key | Value |
 | --- | --- |
-| `SUPPORTBRIDGE_CONTROL_PLANE_URL` | `https://supportbridge-development.onrender.com` |
+| `SUPPORTBRIDGE_CONTROL_PLANE_URL` | Optional; defaults to `https://supportbridge-development.onrender.com` |
 | `SUPPORTBRIDGE_API_KEY` | Set privately; do not commit it |
 
-SupportBridge remains disabled when none are present. If only some are set,
-the server reports a configuration warning without logging their values. The
-server maps the control-plane URL and API key explicitly into the SDK. SDK
+SupportBridge remains disabled until `SUPPORTBRIDGE_API_KEY` is set. The server
+uses the configured control-plane URL or the development endpoint shown above.
+It maps the URL and API key explicitly into the SDK. SDK
 capability metadata includes `optional-assistance-v1` and
 `durable-offer-delivery-v1`. The
 authenticated identity adapter sends only the verified OAuth subject and any

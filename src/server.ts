@@ -9,27 +9,19 @@ import { identifyAuthenticatedUser } from "./auth.js";
 import { companies, type Company, type Industry } from "./data.js";
 
 const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
+const DEFAULT_SUPPORTBRIDGE_CONTROL_PLANE_URL =
+  "https://supportbridge-development.onrender.com";
 
 const companiesById = new Map(companies.map((c) => [c.id, c]));
 
 function hasSupportBridgeConfiguration(env: NodeJS.ProcessEnv): boolean {
-  return [
-    env.SUPPORTBRIDGE_CONTROL_PLANE_URL,
-    env.SUPPORTBRIDGE_API_KEY,
-  ].every(Boolean);
+  return Boolean(env.SUPPORTBRIDGE_API_KEY);
 }
 
-const supportBridgeValues = [
-  process.env.SUPPORTBRIDGE_CONTROL_PLANE_URL,
-  process.env.SUPPORTBRIDGE_API_KEY,
-];
 export const supportBridgeEnabled = hasSupportBridgeConfiguration(process.env);
 
-if (!supportBridgeEnabled && supportBridgeValues.some(Boolean)) {
-  console.warn(
-    "SupportBridge is disabled: SUPPORTBRIDGE_CONTROL_PLANE_URL and " +
-      "SUPPORTBRIDGE_API_KEY must both be set.",
-  );
+if (!supportBridgeEnabled && process.env.SUPPORTBRIDGE_CONTROL_PLANE_URL) {
+  console.warn("SupportBridge is disabled: SUPPORTBRIDGE_API_KEY must be set.");
 }
 
 function formatValuation(valuationUsd: number): string {
@@ -95,7 +87,9 @@ export function createServer(options: {
   const support = enableSupportBridge
     ? SupportBridge.install(server, {
         apiKey: env.SUPPORTBRIDGE_API_KEY!,
-        baseUrl: env.SUPPORTBRIDGE_CONTROL_PLANE_URL!,
+        baseUrl:
+          env.SUPPORTBRIDGE_CONTROL_PLANE_URL ??
+          DEFAULT_SUPPORTBRIDGE_CONTROL_PLANE_URL,
         source: "pitch-fork",
         environment: "development",
         mode: "assist",
