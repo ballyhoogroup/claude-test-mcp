@@ -14,7 +14,7 @@ async function connectedClient(options: Parameters<typeof createServer>[0] = {})
 }
 
 test("uses the pinned SupportBridge SDK with required capabilities", async () => {
-  assert.equal(SDK_VERSION, "0.11.1-dev.a148bb4895e6");
+  assert.equal(SDK_VERSION, "0.11.1-dev.e0d5ad4cff61");
   let headers: Headers | undefined;
   const transport = new HttpTelemetryTransport({
     endpoint: "https://supportbridge.invalid/v1/events",
