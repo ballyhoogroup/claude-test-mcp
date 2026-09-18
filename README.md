@@ -25,7 +25,8 @@ so it works with:
 | `list_industries` | List the four industries with company counts. |
 
 When SupportBridge is configured, its streamlined support tools are installed
-alongside these five business tools, and every business handler is instrumented.
+alongside these five business tools, and every business handler is instrumented
+in the SDK's default `assist` mode.
 
 ## Project layout
 
@@ -113,19 +114,27 @@ returning the resource metadata that points MCP clients at AuthKit.
 
 ### 3. Configure SupportBridge
 
-Add these variables to the same Render service:
+For local development, use `.env.example` as a reference and inject all three
+variables into the MCP server process before starting it. This project does not
+load `.env` files automatically.
+
+For the hosted Alpha MCP, open the Render service's **Environment** settings and
+set these values there. Keep the API key private; do not commit it to this repo.
 
 | Key | Value |
 | --- | --- |
-| `SUPPORTBRIDGE_SOURCE` | The source name registered for this MCP in SupportBridge |
-| `SUPPORTBRIDGE_URL` | `https://supportbridge-staging.onrender.com` (or your SupportBridge deployment) |
-| `SUPPORTBRIDGE_API_KEY` | The SupportBridge SDK API key (store as a secret) |
+| `SUPPORTBRIDGE_URL` | `https://supportbridge-development.onrender.com` |
+| `SUPPORTBRIDGE_SOURCE` | `alpha` |
+| `SUPPORTBRIDGE_API_KEY` | Set privately in the Render environment settings |
 
-SupportBridge activates only when both `SUPPORTBRIDGE_SOURCE` and
-`SUPPORTBRIDGE_API_KEY` are present. It installs the default streamlined tool
-profile, instruments all five company-directory tools, and resolves customer
-identity only from the WorkOS token already verified by this server. Do not
-register legacy support tools separately.
+SupportBridge activates only when all three settings are present. If only some
+are set, the server reports a configuration warning without logging their
+values. It installs the default streamlined tool profile, instruments all five
+company-directory tools, and resolves customer identity only from the WorkOS
+token already verified by this server. The identity contains the verified user
+subject and available account, workspace, organization, and session IDs; it
+does not send a name or email. Requests to an open server remain anonymous. Do
+not register legacy support tools separately.
 
 ### 4. How the flow works
 

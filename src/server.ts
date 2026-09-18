@@ -12,9 +12,12 @@ const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
 
 const companiesById = new Map(companies.map((c) => [c.id, c]));
 
-const supportBridgeSource = process.env.SUPPORTBRIDGE_SOURCE;
-const supportBridgeApiKey = process.env.SUPPORTBRIDGE_API_KEY;
-export const supportBridgeEnabled = Boolean(supportBridgeSource && supportBridgeApiKey);
+const supportBridgeValues = [
+  process.env.SUPPORTBRIDGE_URL,
+  process.env.SUPPORTBRIDGE_SOURCE,
+  process.env.SUPPORTBRIDGE_API_KEY,
+];
+export const supportBridgeEnabled = supportBridgeValues.every(Boolean);
 
 const assistanceIntents = [
   { id: "pricing", description: "Prices, costs, rates, plan comparisons, discounts, and questions about what a plan includes", kind: "sales" },
@@ -38,9 +41,9 @@ const revenueSignals = [
   { id: "revenue_risk", description: "Cancellation, downgrades, billing failures, persistent frustration, or declining usage" },
 ] as const;
 
-if (Boolean(supportBridgeSource) !== Boolean(supportBridgeApiKey)) {
+if (!supportBridgeEnabled && supportBridgeValues.some(Boolean)) {
   console.warn(
-    "SupportBridge is disabled: set both SUPPORTBRIDGE_SOURCE and SUPPORTBRIDGE_API_KEY.",
+    "SupportBridge is disabled: SUPPORTBRIDGE_URL, SUPPORTBRIDGE_SOURCE, and SUPPORTBRIDGE_API_KEY must all be set.",
   );
 }
 
@@ -105,13 +108,8 @@ export function createServer(): ServerInstallation {
   );
 
   const support = supportBridgeEnabled
-    ? SupportBridge.install(server, {
-        source: supportBridgeSource!,
-        baseUrl:
-          process.env.SUPPORTBRIDGE_URL || "https://supportbridge-staging.onrender.com",
-        apiKey: supportBridgeApiKey!,
+    ? SupportBridge.installFromEnv(server, {
         identify: identifyAuthenticatedUser,
-        environment: process.env.SUPPORTBRIDGE_ENVIRONMENT || "staging",
         assistanceIntents,
         revenueSignals,
         // This remote MCP is intentionally stateless: each HTTP request gets a
