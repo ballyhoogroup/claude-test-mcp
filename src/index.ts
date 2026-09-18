@@ -1,6 +1,7 @@
 import express from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { SDK_VERSION as supportBridgeSdkVersion } from "@supportbridge/sdk";
 import { createServer, supportBridgeEnabled } from "./server.js";
 import {
   authEnabled,
@@ -38,6 +39,7 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     supportBridgeEnabled,
+    supportBridgeSdkVersion,
   });
 });
 
