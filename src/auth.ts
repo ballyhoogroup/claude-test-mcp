@@ -23,6 +23,7 @@ const resourceOrigin = resourceUrl ? new URL(resourceUrl).origin : undefined;
 const issuer = rawAuthkitDomain ? normalizeIssuer(rawAuthkitDomain) : undefined;
 
 export const authEnabled = Boolean(issuer && resourceUrl);
+export const workOSProfileScopes = ["openid", "profile", "email"] as const;
 
 const jwks = issuer ? createRemoteJWKSet(new URL(`${issuer}/oauth2/jwks`)) : undefined;
 
@@ -41,7 +42,17 @@ export function protectedResourceMetadata() {
     resource: resourceUrl,
     authorization_servers: [issuer],
     bearer_methods_supported: ["header"],
+    scopes_supported: workOSProfileScopes,
   };
+}
+
+export function bearerChallenge(): string {
+  return [
+    'Bearer error="unauthorized"',
+    'error_description="Authorization needed"',
+    `resource_metadata="${protectedResourceMetadataUrl()}"`,
+    `scope="${workOSProfileScopes.join(" ")}"`,
+  ].join(", ");
 }
 
 export function authorizationServerMetadataUrl(): string {
@@ -66,6 +77,47 @@ function tokenScopes(payload: Record<string, unknown>): string[] {
   return [];
 }
 
+interface WorkOSUserInfo {
+  sub?: unknown;
+  name?: unknown;
+  email?: unknown;
+  email_verified?: unknown;
+}
+
+/** Fetch only approved profile fields, bound to a previously verified JWT subject. */
+export async function fetchWorkOSProfile(
+  accessToken: string,
+  verifiedSubject: string,
+  issuerUrl: string,
+  request: typeof fetch = fetch,
+): Promise<{ name?: string; email?: string; emailVerified: boolean }> {
+  const empty = { emailVerified: false };
+  try {
+    const response = await request(`${issuerUrl}/oauth2/userinfo`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+      redirect: "error",
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) return empty;
+
+    const userInfo = (await response.json()) as WorkOSUserInfo;
+    if (stringClaim(userInfo.sub) !== verifiedSubject) return empty;
+
+    return {
+      name: stringClaim(userInfo.name),
+      email: stringClaim(userInfo.email),
+      emailVerified: userInfo.email_verified === true,
+    };
+  } catch {
+    // Profile enrichment is optional; validated identifier-based auth still works.
+    return empty;
+  }
+}
+
 export async function verifyBearerToken(authorizationHeader: string | undefined): Promise<TokenCheck> {
   if (!authEnabled) {
     return { ok: true };
@@ -81,23 +133,31 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
     // the same WorkOS environment from being replayed against this MCP.
     const { payload } = await jwtVerify(token, jwks!, { issuer, audience: resourceUrl });
     const subject = stringClaim(payload.sub);
+    if (!subject) return { ok: false, reason: "invalid_token" };
     const clientId = stringClaim(payload.client_id) ?? stringClaim(payload.azp) ?? "unknown-client";
+    const scopes = tokenScopes(payload);
+    console.log("WorkOS: profile scopes granted", {
+      openid: scopes.includes("openid"),
+      profile: scopes.includes("profile"),
+      email: scopes.includes("email"),
+    });
+    const profile = await fetchWorkOSProfile(token, subject, issuer!);
 
     return {
       ok: true,
       authInfo: {
         token,
         clientId,
-        scopes: tokenScopes(payload),
+        scopes,
         expiresAt: payload.exp,
         resource: new URL(resourceUrl!),
         extra: {
           subject,
           sessionId: stringClaim(payload.sid),
           organizationId: stringClaim(payload.org_id),
-          name: stringClaim(payload.name),
-          email: stringClaim(payload.email),
-          emailVerified: payload.email_verified === true,
+          name: profile.name,
+          email: profile.email,
+          emailVerified: profile.emailVerified,
         },
       },
     };

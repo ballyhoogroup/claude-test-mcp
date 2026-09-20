@@ -6,8 +6,8 @@ import { createServer, supportBridgeEnabled } from "./server.js";
 import {
   authEnabled,
   authorizationServerMetadataUrl,
+  bearerChallenge,
   protectedResourceMetadata,
-  protectedResourceMetadataUrl,
   verifyBearerToken,
 } from "./auth.js";
 
@@ -90,11 +90,7 @@ function sendUnauthorized(res: express.Response, reason: string) {
     .status(401)
     .set(
       "WWW-Authenticate",
-      [
-        'Bearer error="unauthorized"',
-        'error_description="Authorization needed"',
-        `resource_metadata="${protectedResourceMetadataUrl()}"`,
-      ].join(", "),
+      bearerChallenge(),
     )
     .json({
       jsonrpc: "2.0",

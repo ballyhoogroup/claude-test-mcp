@@ -132,8 +132,13 @@ capability metadata includes `optional-assistance-v1` and
 `durable-offer-delivery-v1`. The
 authenticated WorkOS adapter sends the verified OAuth subject, organization,
 and session identifiers. It may also send the approved `name` and verified
-`email` claims when WorkOS includes them in the validated token. Requests to an
-open server remain anonymous.
+`email` fields returned by WorkOS UserInfo. The server requests the `openid`,
+`profile`, and `email` scopes, validates each access token, calls the configured issuer's
+`/oauth2/userinfo` endpoint, and requires its `sub` to match the verified token
+subject. If UserInfo is unavailable or the scopes were not granted, the
+identifier-based identity still works without profile fields. Tokens and
+profile values are not logged; only whether each requested scope was granted
+is logged. Requests to an open server remain anonymous.
 
 ### 4. How the flow works
 
