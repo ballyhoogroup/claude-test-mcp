@@ -26,7 +26,8 @@ so it works with:
 
 When SupportBridge is configured, its default streamlined support tools are
 installed alongside these five business tools, and each business handler is
-instrumented in `observe-only` mode. Support offers are not enabled.
+instrumented in `assist` mode. The SDK also registers its business-intent tools,
+including the model-visible `offer_assistance` consent-card tool.
 
 ## Project layout
 
@@ -124,7 +125,7 @@ itself. For Render, open the service's **Environment** settings and set:
 | `SUPPORTBRIDGE_SOURCE` | `claude-test-mcp` |
 | `SUPPORTBRIDGE_URL` | SupportBridge control-plane URL |
 | `SUPPORTBRIDGE_ENVIRONMENT` | `development` |
-| `SUPPORTBRIDGE_MODE` | `observe-only` |
+| `SUPPORTBRIDGE_MODE` | `assist` |
 
 SupportBridge remains disabled until `SUPPORTBRIDGE_API_KEY` is set. The server
 uses the SDK's conventional environment variables. SDK

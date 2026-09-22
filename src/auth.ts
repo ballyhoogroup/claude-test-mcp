@@ -175,7 +175,10 @@ export function identifyWorkOSUser(context: any) {
 
   console.log("SupportBridge: authenticated WorkOS user found");
 
-  return SupportBridge.identity.workos(context.authInfo, {
+  const claims = context.authInfo.extra ?? {};
+  const identity = SupportBridge.identity.workos(claims, {
     approvedFields: ["name", "email"],
   });
+  const sessionId = stringClaim(claims.sessionId);
+  return sessionId ? { ...identity, sessionId } : identity;
 }

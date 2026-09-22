@@ -48,7 +48,7 @@ async function connectedClient(options: Parameters<typeof createServer>[0] = {})
 }
 
 test("uses the pinned SupportBridge SDK with required capabilities", async () => {
-  assert.equal(SDK_VERSION, "0.12.1-dev.b286ee6e3eb4");
+  assert.equal(SDK_VERSION, "0.11.1-dev.9da40a18e3db");
   let headers: Headers | undefined;
   const transport = new HttpTelemetryTransport({
     endpoint: "https://supportbridge.invalid/v1/events",
@@ -103,6 +103,28 @@ test("business tools fail open when SupportBridge is not configured", async () =
     assert.match(JSON.stringify(result.content), /fintech/);
   } finally {
     await client.close();
+    await server.close();
+  }
+});
+
+test("business-intent tools are supplied by the configured SupportBridge SDK", async () => {
+  const { client, server, support } = await connectedClient({
+    env: {
+      SUPPORTBRIDGE_API_KEY: "test-only-secret",
+      SUPPORTBRIDGE_SOURCE: "claude-test-mcp",
+    },
+    supportBridgeFetch: async () => {
+      throw new Error("simulated network outage");
+    },
+  });
+  try {
+    assert.ok(support);
+    const tools = await client.listTools();
+    assert.ok(tools.tools.some((tool) => tool.name === "offer_assistance"));
+    assert.ok(tools.tools.some((tool) => tool.name === "confirm_assistance"));
+  } finally {
+    await client.close();
+    if (support) await support.close();
     await server.close();
   }
 });

@@ -23,6 +23,6 @@ services:
       - key: SUPPORTBRIDGE_ENVIRONMENT
         value: development
       - key: SUPPORTBRIDGE_MODE
-        value: observe-only
+        value: assist
       - key: SUPPORTBRIDGE_API_KEY
         sync: false
