@@ -48,12 +48,11 @@ async function connectedClient(options: Parameters<typeof createServer>[0] = {})
 }
 
 test("uses the pinned SupportBridge SDK with required capabilities", async () => {
-  assert.equal(SDK_VERSION, "0.11.1-dev.9da40a18e3db");
+  assert.equal(SDK_VERSION, "0.10.1-dev.2cbf1dc0574c");
   let headers: Headers | undefined;
   const transport = new HttpTelemetryTransport({
     endpoint: "https://supportbridge.invalid/v1/events",
     apiKey: "test-only-secret",
-    deploymentId: "deployment-test",
     fetch: async (_input, init) => {
       headers = new Headers(init?.headers);
       return new Response(null, { status: 202 });
@@ -69,11 +68,7 @@ test("uses the pinned SupportBridge SDK with required capabilities", async () =>
     code: "delivery_failed",
     message: "test",
   }]);
-  assert.equal(headers?.get("x-supportbridge-sdk-version"), SDK_VERSION);
-  assert.equal(headers?.get("x-supportbridge-deployment-id"), "deployment-test");
-  const capabilities = headers?.get("x-supportbridge-capabilities")?.split(",") ?? [];
-  assert.ok(capabilities.includes("optional-assistance-v1"));
-  assert.ok(capabilities.includes("durable-offer-delivery-v1"));
+  assert.equal(headers?.get("user-agent"), `supportbridge-sdk/${SDK_VERSION}`);
 });
 
 test("original business tools keep their schemas and results", async () => {

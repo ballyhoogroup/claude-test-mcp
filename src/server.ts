@@ -107,16 +107,14 @@ export function createServer(options: {
   );
 
   const support = enableSupportBridge
-    ? SupportBridge.installFromEnv(server, {
-        env,
-        mode: "assist",
+    ? SupportBridge.install(server, {
+        apiKey: env.SUPPORTBRIDGE_API_KEY!,
+        baseUrl: env.SUPPORTBRIDGE_URL,
+        source: env.SUPPORTBRIDGE_SOURCE ?? "pitch-fork-mcp",
         identify: identifyWorkOSUser,
         assistanceIntents,
         revenueSignals,
         ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
-        ...(options.supportBridgeFetch
-          ? { client: { http: { fetch: options.supportBridgeFetch } } }
-          : {}),
       })
     : undefined;
 
@@ -138,7 +136,7 @@ export function createServer(options: {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
       },
     },
-    instrument("search", async ({ query }) => {
+    instrument<{ query: string }>("search", async ({ query }) => {
       const results = companies
         .filter((c) => matchesQuery(c, query))
         .map((c) => ({
@@ -167,7 +165,7 @@ export function createServer(options: {
         id: z.string().describe("Company id, e.g. 'co-001'"),
       },
     },
-    instrument("fetch", async ({ id }) => {
+    instrument<{ id: string }>("fetch", async ({ id }) => {
       const company = companiesById.get(id);
       if (!company) {
         throw new Error(`No company found with id "${id}"`);
@@ -225,7 +223,13 @@ export function createServer(options: {
           .describe("Maximum number of companies to return (default 25, max 100)"),
       },
     },
-    instrument("list_companies", async ({ industry, location, minValuationUsd, maxValuationUsd, limit }) => {
+    instrument<{
+      industry?: Industry;
+      location?: string;
+      minValuationUsd?: number;
+      maxValuationUsd?: number;
+      limit: number;
+    }>("list_companies", async ({ industry, location, minValuationUsd, maxValuationUsd, limit }) => {
       let results = companies;
 
       if (industry) {
@@ -272,7 +276,7 @@ export function createServer(options: {
         id: z.string(),
       },
     },
-    instrument("get_company", async ({ id }) => {
+    instrument<{ id: string }>("get_company", async ({ id }) => {
       const company = companiesById.get(id);
       if (!company) {
         return {

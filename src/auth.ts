@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { SupportBridge } from "@supportbridge/sdk";
+import { identityAdapters } from "@supportbridge/sdk";
 
 /**
  * OAuth 2.1 resource-server support for this MCP server, using WorkOS AuthKit
@@ -176,7 +176,7 @@ export function identifyWorkOSUser(context: any) {
   console.log("SupportBridge: authenticated WorkOS user found");
 
   const claims = context.authInfo.extra ?? {};
-  const identity = SupportBridge.identity.workos(claims, {
+  const identity = identityAdapters.workos(claims, {
     approvedFields: ["name", "email"],
   });
   const sessionId = stringClaim(claims.sessionId);

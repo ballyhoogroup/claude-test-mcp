@@ -1,4 +1,4 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - '@supportbridge/sdk@0.11.1-dev.9da40a18e3db'
+  - '@supportbridge/sdk@0.10.1-dev.2cbf1dc0574c'
