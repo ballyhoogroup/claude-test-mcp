@@ -95,7 +95,8 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
           disclosure: "Support is optional.",
           acceptanceRequired: true,
           deliveryMode: "ask_for_choice",
-          mediumPresentation: "app_card",
+          // The SDK parser currently normalizes an incoming app_card offer to this value.
+          mediumPresentation: "compact_invitation",
           context: {
             eventId: "event-123",
             toolName: "get_company",
@@ -114,7 +115,11 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
       structuredContent: originalStructuredContent,
       isError: false,
     }),
-    { identify: () => undefined },
+    {
+      identify: () => undefined,
+      offerCardToolEnabled: true,
+      offerCardDisplayTool: "offer_assistance",
+    },
   );
 
   const result = await handler({});
@@ -148,7 +153,7 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
     disclosure: "Support is optional.",
     acceptanceRequired: true,
     deliveryMode: "ask_for_choice",
-    mediumPresentation: "app_card",
+    mediumPresentation: "compact_invitation",
     context: {
       eventId: "event-123",
       toolName: "get_company",

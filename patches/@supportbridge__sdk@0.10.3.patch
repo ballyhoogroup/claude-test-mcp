@@ -1,12 +1,12 @@
 diff --git a/dist/mcp.js b/dist/mcp.js
-index e495499ba08924531eecc4e6976a71ee55434a27..6a036e13f6db8bd56b29d88171c7d6d97466274d 100644
+index e495499ba08924531eecc4e6976a71ee55434a27..a788c2680445f445c90a221b790b53831425f5dc 100644
 --- a/dist/mcp.js
 +++ b/dist/mcp.js	
 @@ -139,6 +139,43 @@ function toMcpResult(result, mediumPresentation, profile, offerCardToolEnabled =
          // Leave business schemas, structured content, and error state exactly as supplied.
          // Metadata is optional, untrusted data, not an instruction or authorization to act.
          const notice = result.offer.optionalAssistance;
-+        if (!result.offer.blocking && notice.mediumPresentation === "app_card") {
++        if (!result.offer.blocking && offerCardToolEnabled && offerCardDisplayTool === "offer_assistance") {
 +            const representativeName = result.offer.assignedRep?.name;
 +            const relevance = notice.reasonCode === "troubleshooting" ? "troubleshoot this tool call"
 +                : notice.reasonCode === "account_assistance" ? "help with the account-related part of this request"
