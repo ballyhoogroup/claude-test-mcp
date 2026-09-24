@@ -16,6 +16,7 @@ export const DISPLAY_INSTRUCTIONS = [
   "Do not ask a preliminary \"Would you like me to contact support?\" question—the offer_assistance card is the consent step.",
   "Calling offer_assistance only shows an optional-assistance card. It does not create a conversation, reserve messaging, or contact support.",
   "Do not say support was contacted until confirm_assistance succeeds for that offer id.",
+  "When calling offer_assistance, pass only intent and issueSummary. Do not pass a person's name, user id, email, or an offer id.",
   "When a tool result includes a live-assistance invitation after the business answer, relay that invitation to the user directly using the representative and vendor names—for example, \"Sarah the account executive at Demo Vendor is able to assist with this chat. Sarah is live and able to start a chat. Would you like to connect?\"",
   "Do not call a tool to present or display a manual offer. Do not mention connectors, tools, surfaces, or vendor systems.",
   "For a manual invitation, do not call request_assistance or decline_assistance until the user explicitly accepts or declines that offer id.",
@@ -58,7 +59,8 @@ SupportBridge.install = function install(server, options) {
       "Show an optional live-assistance consent card for a matching business intent.",
       `Call this when the user request matches one of these intents: ${INTENT_CATALOG_TEXT}.`,
       "This only displays the card. It does not contact support, create a conversation, or message a representative.",
-      "Do not ask \"Would you like me to contact support?\" first—the card is the consent step."
+      "Do not ask \"Would you like me to contact support?\" first—the card is the consent step.",
+      "Pass only intent and issueSummary. Do not pass a person's name, user id, email, or offer id. The server creates the offer id."
     ].join(" "),
     inputSchema: {
       intent: z.enum([ASSISTANCE_INTENT_IDS[0], ...ASSISTANCE_INTENT_IDS.slice(1)]).describe(`Business intent id. Match meanings: ${INTENT_CATALOG_TEXT}`),
@@ -69,7 +71,7 @@ SupportBridge.install = function install(server, options) {
 
   server.registerTool("confirm_assistance", {
     title: "Confirm assistance",
-    description: "Contact support only after the customer explicitly accepts a specific offer id from an assistance card. Opens a conversation and the chat UI when the host supports MCP Apps. Do not call this until the user accepts that offer.",
+    description: "Contact support only after the customer accepts the assistance card. Pass only the offer id that offer_assistance returned. Do not pass a person's name or invent an offer id. The card calls this tool. Do not call it until the user accepts.",
     inputSchema: { offer_id: z.string().describe("Offer id from the assistance card") },
     _meta: chatMeta
   }, async (args, extra) => acceptOffer(baseUrl, options.apiKey, await identityOf(identify, extra), args?.offer_id));
@@ -254,6 +256,16 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
       representativeRole: offer.representativeRole,
       vendorName: offer.vendorName,
       expiresAt: offer.expiresAt
+    },
+    _meta: {
+      ...uiMeta(INTENT_OFFER_RESOURCE),
+      "supportbridge/offer": {
+        offerId: offer.id,
+        offer_id: offer.id,
+        vendorName: offer.vendorName,
+        representativeName: offer.representativeName,
+        representativeRole: offer.representativeRole
+      }
     }
   };
 }
@@ -669,11 +681,13 @@ const declineEl=document.getElementById("decline");
 function apply(data){
   const payload=data||{};
   offerId=payload.offerId||payload.offer_id||offerId;
-  const vendor=payload.vendorName||"Support";
-  eyebrowEl.textContent=(vendor+" support available").toUpperCase();
-  titleEl.textContent=vendor+" support is available to review this result. Would you like to connect?";
-  const who=payload.representativeName?(payload.representativeName+(payload.representativeRole?", "+payload.representativeRole:"")):vendor;
-  noteEl.textContent="Starting a chat contacts "+who+". Nothing is sent until you choose Chat with support.";
+  const vendor=payload.vendorName||"";
+  if(vendor){
+    eyebrowEl.textContent=(vendor+" support available").toUpperCase();
+    titleEl.textContent=vendor+" support is available to review this result. Would you like to connect?";
+  }
+  const who=payload.representativeName?(payload.representativeName+(payload.representativeRole?", "+payload.representativeRole:"")):(vendor||"the representative");
+  if(payload.representativeName||vendor) noteEl.textContent="Starting a chat contacts "+who+". Nothing is sent until you choose Chat with support.";
   if(!pendingAction) setBusy(false);
   fitFrame();
 }
@@ -735,26 +749,43 @@ function bridgeScript() {
 const pending=new Map();
 let nextId=1;
 let toolHandler=()=>{};
-function onToolResult(fn){toolHandler=fn;}
+let handlerReady=false;
+let pendingResult=null;
+function onToolResult(fn){
+  toolHandler=fn;
+  handlerReady=true;
+  if(pendingResult){const result=pendingResult;pendingResult=null;fn(result);}
+}
+function deliverResult(params){
+  if(!handlerReady)pendingResult=params||{};
+  else toolHandler(params||{});
+}
+function payloadFrom(value){
+  if(!value||typeof value!=="object")return null;
+  const nested=value.structuredContent||value["supportbridge/offer"];
+  const payload=nested&&typeof nested==="object"?nested:value;
+  if(payload.offerId||payload.offer_id||payload.vendorName||payload.representativeName)return payload;
+  return null;
+}
 function hostOutput(){
   try{
-    const output=window.openai&&window.openai.toolOutput;
-    if(!output||typeof output!=="object")return null;
-    return output.structuredContent||output;
+    const openai=window.openai||{};
+    return payloadFrom(openai.toolOutput)||payloadFrom(openai.toolResponseMetadata)||payloadFrom(openai.toolResponse)||null;
   }catch(e){return null;}
 }
 function readHostOutput(){
   return Promise.resolve(hostOutput()||{});
 }
-window.addEventListener("openai:set_globals",()=>{
-  const output=hostOutput();
-  if(output)toolHandler({structuredContent:output});
+window.addEventListener("openai:set_globals",(event)=>{
+  const globals=event&&event.detail&&event.detail.globals;
+  const output=payloadFrom(globals&&globals.toolOutput)||payloadFrom(globals&&globals.toolResponseMetadata)||hostOutput();
+  if(output)deliverResult({structuredContent:output});
 });
 window.addEventListener("message",event=>{
   const msg=event.data;
   if(!msg||msg.jsonrpc!=="2.0")return;
   if(msg.id!=null&&pending.has(msg.id)){pending.get(msg.id)(msg);pending.delete(msg.id);return;}
-  if(msg.method==="ui/notifications/tool-result")toolHandler(msg.params||{});
+  if(msg.method==="ui/notifications/tool-result")deliverResult(msg.params||{});
 });
 let frameHeight=0;
 function requestFrame(height){
