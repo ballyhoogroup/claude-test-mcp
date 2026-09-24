@@ -1,6 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { identityAdapters } from "@supportbridge/sdk";
 
 /**
  * OAuth 2.1 resource-server support for this MCP server, using WorkOS AuthKit
@@ -164,21 +163,4 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
   } catch {
     return { ok: false, reason: "invalid_token" };
   }
-}
-
-/** Resolve SupportBridge identity only from the MCP SDK's verified AuthInfo. */
-export function identifyWorkOSUser(context: any) {
-  if (!context?.authInfo) {
-    console.log("SupportBridge: no authenticated user found");
-    return undefined;
-  }
-
-  console.log("SupportBridge: authenticated WorkOS user found");
-
-  const claims = context.authInfo.extra ?? {};
-  const identity = identityAdapters.workos(claims, {
-    approvedFields: ["name", "email"],
-  });
-  const sessionId = stringClaim(claims.sessionId);
-  return sessionId ? { ...identity, sessionId } : identity;
 }

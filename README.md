@@ -24,15 +24,9 @@ so it works with:
 | `get_company` | Look up one company by its `id` (e.g. `co-001`). |
 | `list_industries` | List the four industries with company counts. |
 
-When SupportBridge is configured, its default streamlined support tools are
-installed alongside these five business tools, and each business handler is
-instrumented in `assist` mode. The SDK also registers its business-intent tools,
-including the model-visible `offer_assistance` consent-card tool.
-
-Pitch-Fork integrates directly with the SDK: `SupportBridge.install(server,
-options)` receives the `@modelcontextprotocol/sdk` `McpServer` instance and
-returns the `instrumentTool()` and `close()` lifecycle API. There is no
-Pitch-Fork MCP adapter layer or adapter-specific configuration.
+These business tools are instrumented by the vendored SupportBridge SDK. The
+SDK also registers its assistance and chat tools; Pitch-Fork does not register
+or modify those tools itself.
 
 ## Project layout
 
@@ -113,42 +107,14 @@ In the Render dashboard, open the service → **Environment**, and add:
 | --- | --- |
 | `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
 | `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com/mcp` (the full MCP endpoint, with no trailing slash) |
+| `SUPPORTBRIDGE_API_KEY` | `sb_test_demo_vendor` |
+| `SUPPORTBRIDGE_URL` | `https://supportbridge-service.onrender.com` |
 
 Save — Render redeploys automatically. Once both are set, `/mcp` requires a
 valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
 returning the resource metadata that points MCP clients at AuthKit.
 
-### 3. Configure SupportBridge
-
-Copy `.env.example` for local reference, then inject these variables into
-the server process before it starts. This project does not load `.env` files
-itself. For Render, open the service's **Environment** settings and set:
-
-| Key | Value |
-| --- | --- |
-| `SUPPORTBRIDGE_API_KEY` | Set privately; do not commit it |
-| `SUPPORTBRIDGE_SOURCE` | `claude-test-mcp` |
-| `SUPPORTBRIDGE_URL` | SupportBridge control-plane URL |
-| `SUPPORTBRIDGE_ENVIRONMENT` | `development` |
-| `SUPPORTBRIDGE_MODE` | `assist` |
-
-SupportBridge remains disabled until `SUPPORTBRIDGE_API_KEY` is set. The server
-passes configuration directly to SupportBridge SDK 0.10.3, enables the SDK's
-offer card, and uses the exported standard assistance-intent and revenue-signal
-catalogs. SDK
-capability metadata includes `optional-assistance-v1` and
-`durable-offer-delivery-v1`. The
-authenticated WorkOS identity resolver sends the verified OAuth subject, organization,
-and session identifiers. It may also send the approved `name` and verified
-`email` fields returned by WorkOS UserInfo. The server requests the `openid`,
-`profile`, and `email` scopes, validates each access token, calls the configured issuer's
-`/oauth2/userinfo` endpoint, and requires its `sub` to match the verified token
-subject. If UserInfo is unavailable or the scopes were not granted, the
-identifier-based identity still works without profile fields. Tokens and
-profile values are not logged; only whether each requested scope was granted
-is logged. Requests to an open server remain anonymous.
-
-### 4. How the flow works
+### 3. How the flow works
 
 1. An MCP client (ChatGPT, Claude) calls `POST /mcp` with no token.
 2. This server replies `401` with a `WWW-Authenticate: Bearer

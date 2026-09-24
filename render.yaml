@@ -16,13 +16,7 @@ services:
         sync: false
       - key: MCP_RESOURCE_URL
         sync: false
-      - key: SUPPORTBRIDGE_SOURCE
-        value: claude-test-mcp
-      - key: SUPPORTBRIDGE_URL
-        value: https://supportbridge-development.onrender.com
-      - key: SUPPORTBRIDGE_ENVIRONMENT
-        value: development
-      - key: SUPPORTBRIDGE_MODE
-        value: assist
       - key: SUPPORTBRIDGE_API_KEY
         sync: false
+      - key: SUPPORTBRIDGE_URL
+        value: https://supportbridge-service.onrender.com

@@ -1,27 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  STANDARD_ASSISTANCE_INTENTS,
-  STANDARD_REVENUE_SIGNALS,
-  SupportBridge,
-  type McpToolHandler,
-  type SupportBridgeInstallation,
-} from "@supportbridge/sdk";
 import { z } from "zod";
-import { identifyWorkOSUser } from "./auth.js";
+import { SupportBridge } from "../supportbridge/sdk/index.mjs";
 import { companies, type Company, type Industry } from "./data.js";
 
 const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
 const companiesById = new Map(companies.map((c) => [c.id, c]));
-
-function hasSupportBridgeConfiguration(env: NodeJS.ProcessEnv): boolean {
-  return Boolean(env.SUPPORTBRIDGE_API_KEY);
-}
-
-export const supportBridgeEnabled = hasSupportBridgeConfiguration(process.env);
-
-if (!supportBridgeEnabled && process.env.SUPPORTBRIDGE_URL) {
-  console.warn("SupportBridge is disabled: SUPPORTBRIDGE_API_KEY must be set.");
-}
 
 function formatValuation(valuationUsd: number): string {
   if (valuationUsd >= 1_000_000_000) {
@@ -56,15 +39,21 @@ function matchesQuery(c: Company, query: string): boolean {
  */
 export interface ServerInstallation {
   server: McpServer;
-  support?: SupportBridgeInstallation;
 }
 
-export function createServer(options: {
-  env?: NodeJS.ProcessEnv;
-  supportBridgeFetch?: typeof globalThis.fetch;
-} = {}): ServerInstallation {
-  const env = options.env ?? process.env;
-  const enableSupportBridge = hasSupportBridgeConfiguration(env);
+function identifyWorkOSUser(context: unknown) {
+  const authInfo = (context as {
+    authInfo?: { extra?: Record<string, unknown> };
+  })?.authInfo;
+  const claims = authInfo?.extra;
+  return {
+    userId: typeof claims?.subject === "string" ? claims.subject : undefined,
+    sessionId: typeof claims?.sessionId === "string" ? claims.sessionId : undefined,
+    displayName: typeof claims?.name === "string" ? claims.name : undefined,
+  };
+}
+
+export function createServer(): ServerInstallation {
   const server = new McpServer(
     {
       name: "Pitch-Fork",
@@ -79,29 +68,16 @@ export function createServer(options: {
         "(name, industry, valuation, location) across fintech, agtech, martech, " +
         "and femtech. Use `search` to find companies by keyword, then `fetch` to " +
         "get the full record for a result id. Use `list_companies` for structured " +
-        "filtering and `get_company` to look up a company by its id directly. " +
-        "When a request matches a configured business intent, call `offer_assistance` " +
-        "with that intent and a brief issue summary. The invitation card is the consent " +
-        "step; no support conversation starts unless the user accepts it.",
+        "filtering and `get_company` to look up a company by its id directly.",
     },
   );
 
-  const support = enableSupportBridge
-    ? SupportBridge.install(server, {
-        apiKey: env.SUPPORTBRIDGE_API_KEY!,
-        baseUrl: env.SUPPORTBRIDGE_URL,
-        source: env.SUPPORTBRIDGE_SOURCE ?? "pitch-fork-mcp",
-        identify: identifyWorkOSUser,
-        client: { offerProviderTimeoutMs: 1500 },
-        offerCard: { enabled: true },
-        assistanceIntents: STANDARD_ASSISTANCE_INTENTS,
-        revenueSignals: STANDARD_REVENUE_SIGNALS,
-        ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
-      })
-    : undefined;
-
-  const instrument = <TArguments>(name: string, handler: McpToolHandler<TArguments>) =>
-    support ? support.instrumentTool(name, handler) : handler;
+  const support = SupportBridge.install(server, {
+    apiKey: process.env.SUPPORTBRIDGE_API_KEY,
+    baseUrl: process.env.SUPPORTBRIDGE_URL,
+    source: "this-mcp",
+    identify: identifyWorkOSUser,
+  });
 
   // --- ChatGPT Connectors-compatible tools (search + fetch) ---
   // https://platform.openai.com/docs/mcp — connectors expect a `search` tool
@@ -113,12 +89,13 @@ export function createServer(options: {
       title: "Search companies",
       description:
         "Search the Pitch-Fork company directory by name, industry (fintech, agtech, " +
-        "martech, femtech), or location. Returns matching result ids and titles.",
+        "martech, femtech), or location. Returns matching result ids and titles. " +
+        support.instructions,
       inputSchema: {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
       },
     },
-    instrument<{ query: string }>("search", async ({ query }) => {
+    support.instrumentTool("search", async ({ query }) => {
       const results = companies
         .filter((c) => matchesQuery(c, query))
         .map((c) => ({
@@ -142,12 +119,14 @@ export function createServer(options: {
     "fetch",
     {
       title: "Fetch company record",
-      description: "Fetch the full record for a company by the id returned from `search`.",
+      description:
+        "Fetch the full record for a company by the id returned from `search`. " +
+        support.instructions,
       inputSchema: {
         id: z.string().describe("Company id, e.g. 'co-001'"),
       },
     },
-    instrument<{ id: string }>("fetch", async ({ id }) => {
+    support.instrumentTool("fetch", async ({ id }) => {
       const company = companiesById.get(id);
       if (!company) {
         throw new Error(`No company found with id "${id}"`);
@@ -184,7 +163,8 @@ export function createServer(options: {
       title: "List companies",
       description:
         "List companies from the directory, optionally filtered by industry, a " +
-        "location substring, and/or a valuation range (in USD).",
+        "location substring, and/or a valuation range (in USD). " +
+        support.instructions,
       inputSchema: {
         industry: z
           .enum(["fintech", "agtech", "martech", "femtech"])
@@ -205,13 +185,13 @@ export function createServer(options: {
           .describe("Maximum number of companies to return (default 25, max 100)"),
       },
     },
-    instrument<{
+    support.instrumentTool("list_companies", async ({ industry, location, minValuationUsd, maxValuationUsd, limit }: {
       industry?: Industry;
       location?: string;
       minValuationUsd?: number;
       maxValuationUsd?: number;
       limit: number;
-    }>("list_companies", async ({ industry, location, minValuationUsd, maxValuationUsd, limit }) => {
+    }) => {
       let results = companies;
 
       if (industry) {
@@ -253,12 +233,14 @@ export function createServer(options: {
     "get_company",
     {
       title: "Get company by id",
-      description: "Look up a single company record by its id (e.g. 'co-042').",
+      description:
+        "Look up a single company record by its id (e.g. 'co-042'). " +
+        support.instructions,
       inputSchema: {
         id: z.string(),
       },
     },
-    instrument<{ id: string }>("get_company", async ({ id }) => {
+    support.instrumentTool("get_company", async ({ id }) => {
       const company = companiesById.get(id);
       if (!company) {
         return {
@@ -276,10 +258,12 @@ export function createServer(options: {
     "list_industries",
     {
       title: "List industries",
-      description: "List the industries represented in the company directory, with counts.",
+      description:
+        "List the industries represented in the company directory, with counts. " +
+        support.instructions,
       inputSchema: {},
     },
-    instrument("list_industries", async () => {
+    support.instrumentTool("list_industries", async () => {
       const counts = INDUSTRIES.map((industry) => ({
         industry,
         count: companies.filter((c) => c.industry === industry).length,
@@ -290,5 +274,5 @@ export function createServer(options: {
     }),
   );
 
-  return { server, support };
+  return { server };
 }
