@@ -1,5 +1,5 @@
 diff --git a/dist/mcp.js b/dist/mcp.js
-index e495499ba08924531eecc4e6976a71ee55434a27..a788c2680445f445c90a221b790b53831425f5dc 100644
+index e495499ba08924531eecc4e6976a71ee55434a27..4ba3f32598e188b5eddff7da5162773994a2e621 100644
 --- a/dist/mcp.js
 +++ b/dist/mcp.js	
 @@ -139,6 +139,43 @@ function toMcpResult(result, mediumPresentation, profile, offerCardToolEnabled =
@@ -12,7 +12,7 @@ index e495499ba08924531eecc4e6976a71ee55434a27..a788c2680445f445c90a221b790b5383
 +                : notice.reasonCode === "account_assistance" ? "help with the account-related part of this request"
 +                    : "help interpret these results and discuss next steps";
 +            const supporter = representativeName ? `${representativeName} at "${notice.vendorName}"` : `a team member at "${notice.vendorName}"`;
-+            const visibleText = `Optional live support: ${supporter} is available to ${relevance}. This is optional. No chat has been started. Would you like to connect?`;
++            const visibleText = `Optional live support: ${supporter} is available to ${relevance}. This is optional. No chat has been started. Would you like to connect? To display the support invitation, call offer_assistance with {"offer_id":"${result.offer.triggerId}"}. This display-only call does not accept the offer or start a chat.`;
 +            const displayInstruction = {
 +                "supportbridge/offer": {
 +                    offerId: result.offer.triggerId,
@@ -46,3 +46,16 @@ index e495499ba08924531eecc4e6976a71ee55434a27..a788c2680445f445c90a221b790b5383
          // Legacy presentation values remain parseable for wire compatibility, but
          // every optional offer now renders through the one production presentation.
          const requestedPresentation = "compact_invitation";
+diff --git a/dist/schemas/offers.js b/dist/schemas/offers.js
+index 3d77f23882e2aac6c15d0b7871ab43866f287ed7..a2dd5c0b2c7c28d27ab7e10bb11e68926c52551d 100644
+--- a/dist/schemas/offers.js
++++ b/dist/schemas/offers.js
+@@ -34,7 +34,7 @@ export function parseSupportOffer(value) {
+     return {
+         triggerId: offer.triggerId,
+         ...(offer.delivery ? { delivery: offer.delivery } : {}),
+-        ...(offer.optionalAssistance ? { optionalAssistance: { ...offer.optionalAssistance, mediumPresentation: "compact_invitation" } } : {}),
++        ...(offer.optionalAssistance ? { optionalAssistance: offer.optionalAssistance } : {}),
+         ...(offer.candidateId ? { candidateId: offer.candidateId } : {}),
+         reason: offer.reason,
+         blocking: offer.blocking,

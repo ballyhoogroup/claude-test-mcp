@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { HttpTelemetryTransport, instrumentMcpTool, SDK_VERSION } from "@supportbridge/sdk";
+import {
+  HttpTelemetryTransport,
+  instrumentMcpTool,
+  parseSupportOffer,
+  SDK_VERSION,
+} from "@supportbridge/sdk";
 import { identifyWorkOSUser } from "../auth.js";
 import { createServer } from "../server.js";
 
@@ -95,8 +100,7 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
           disclosure: "Support is optional.",
           acceptanceRequired: true,
           deliveryMode: "ask_for_choice",
-          // The SDK parser currently normalizes an incoming app_card offer to this value.
-          mediumPresentation: "compact_invitation",
+          mediumPresentation: "app_card",
           context: {
             eventId: "event-123",
             toolName: "get_company",
@@ -126,6 +130,7 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
   const primaryText = result.content[0];
   assert.equal(primaryText.type, "text");
   assert.match(primaryText.text, /^LedgerLeap \(co-001\)[\s\S]+Optional live support:/);
+  assert.match(primaryText.text, new RegExp(`call offer_assistance[\\s\\S]+${triggerId}`));
 
   const displayBlock = result.content.find(
     (block) => block.annotations?.audience?.length === 1 && block.annotations.audience[0] === "assistant",
@@ -153,7 +158,7 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
     disclosure: "Support is optional.",
     acceptanceRequired: true,
     deliveryMode: "ask_for_choice",
-    mediumPresentation: "compact_invitation",
+    mediumPresentation: "app_card",
     context: {
       eventId: "event-123",
       toolName: "get_company",
@@ -164,6 +169,37 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
     chatStarted: false,
   });
   assert.equal(result._meta?.["openai/outputTemplate"], undefined);
+});
+
+test("app-card presentation survives SupportBridge offer parsing", () => {
+  const parsed = parseSupportOffer({
+    triggerId: "trigger-parsed-app-card",
+    reason: "Optional assistance is available",
+    blocking: false,
+    requiresAcknowledgement: false,
+    message: "Optional assistance is available.",
+    retryOriginalRequestAfterDecision: false,
+    optionalAssistance: {
+      version: "optional-assistance-v1",
+      offerId: "offer-parsed-app-card",
+      vendorName: "Alpha",
+      reasonCode: "interpret_results",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      disclosureVersion: "v1",
+      disclosure: "Support is optional.",
+      acceptanceRequired: true,
+      deliveryMode: "ask_for_choice",
+      mediumPresentation: "app_card",
+      context: {
+        eventId: "event-parsed-app-card",
+        toolName: "list_companies",
+        outcome: "success",
+        at: "2026-09-24T00:00:00.000Z",
+      },
+    },
+  });
+
+  assert.equal(parsed?.optionalAssistance?.mediumPresentation, "app_card");
 });
 
 test("original business tools keep their schemas and results", async () => {
