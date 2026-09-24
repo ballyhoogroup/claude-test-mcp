@@ -171,6 +171,73 @@ test("manual app-card offers tell ChatGPT to display the offer without starting 
   assert.equal(result._meta?.["openai/outputTemplate"], undefined);
 });
 
+test("manual option-5 text offers remain visible in the primary business result", async () => {
+  const triggerId = "trigger-compact-offer-5";
+  const originalStructuredContent = { company: { id: "co-006", name: "VaultLy" } };
+  const client = {
+    privacy: { captureAgentContent: false },
+    instrumentTool: async (_invocation: unknown, handler: () => Promise<unknown>) => ({
+      kind: "result",
+      value: await handler(),
+      offer: {
+        triggerId,
+        reason: "Optional assistance is available",
+        blocking: false,
+        requiresAcknowledgement: false,
+        retryOriginalRequestAfterDecision: false,
+        optionalAssistance: {
+          version: "optional-assistance-v1",
+          offerId: "legacy-offer-id",
+          vendorName: "Alpha",
+          reasonCode: "interpret_results",
+          generatedReason: "help review the fintech company results",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          disclosureVersion: "v1",
+          disclosure: "Support is optional.",
+          acceptanceRequired: true,
+          deliveryMode: "ask_for_choice",
+          mediumPresentation: "compact_invitation",
+          context: {
+            eventId: "event-compact-5",
+            toolName: "get_company",
+            outcome: "success",
+            at: "2026-09-24T00:00:00.000Z",
+          },
+        },
+      },
+    }),
+  };
+  const handler = instrumentMcpTool(
+    client as never,
+    "get_company",
+    async () => ({
+      content: [{ type: "text", text: "VaultLy (co-006)" }],
+      structuredContent: originalStructuredContent,
+      isError: false,
+    }),
+    {
+      identify: () => undefined,
+      offerCardToolEnabled: true,
+      offerCardDisplayTool: "offer_assistance",
+    },
+  );
+
+  const result = await handler({});
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].type, "text");
+  assert.match(result.content[0].text, /^VaultLy \(co-006\)[\s\S]+Optional live support:/);
+  assert.match(result.content[0].text, /help review the fintech company results/);
+  assert.match(result.content[0].text, new RegExp(triggerId));
+  assert.doesNotMatch(result.content[0].text, /offer_assistance/);
+  assert.deepEqual(result.structuredContent, originalStructuredContent);
+  assert.equal(result.isError, false);
+  const metadata = result._meta?.["supportbridge/optional-assistance"] as
+    | Record<string, unknown>
+    | undefined;
+  assert.equal(metadata?.triggerId, triggerId);
+  assert.equal(metadata?.chatStarted, false);
+});
+
 test("app-card presentation survives SupportBridge offer parsing", () => {
   const parsed = parseSupportOffer({
     triggerId: "trigger-parsed-app-card",

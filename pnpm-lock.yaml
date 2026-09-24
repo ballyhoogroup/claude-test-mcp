@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@supportbridge/sdk@0.10.3': f5764463fbb5f0323886c00f2cd36375b7d903ed1b22f41c1f2b8b2de37d4175
+  '@supportbridge/sdk@0.10.3': 5da2b7e760efb860bc4980290ecfdd2758fc9776358ce68b02a1f61537597147
 
 importers:
 
@@ -16,7 +16,7 @@ importers:
         version: 1.30.0(zod@3.25.76)
       '@supportbridge/sdk':
         specifier: 0.10.3
-        version: 0.10.3(patch_hash=f5764463fbb5f0323886c00f2cd36375b7d903ed1b22f41c1f2b8b2de37d4175)(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))
+        version: 0.10.3(patch_hash=5da2b7e760efb860bc4980290ecfdd2758fc9776358ce68b02a1f61537597147)(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))
       express:
         specifier: ^4.21.2
         version: 4.22.3
@@ -872,7 +872,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@supportbridge/sdk@0.10.3(patch_hash=f5764463fbb5f0323886c00f2cd36375b7d903ed1b22f41c1f2b8b2de37d4175)(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))':
+  '@supportbridge/sdk@0.10.3(patch_hash=5da2b7e760efb860bc4980290ecfdd2758fc9776358ce68b02a1f61537597147)(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))':
     dependencies:
       '@modelcontextprotocol/ext-apps': 1.7.5(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))(zod@3.25.76)
       '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
