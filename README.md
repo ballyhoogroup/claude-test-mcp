@@ -29,6 +29,11 @@ installed alongside these five business tools, and each business handler is
 instrumented in `assist` mode. The SDK also registers its business-intent tools,
 including the model-visible `offer_assistance` consent-card tool.
 
+Pitch-Fork integrates directly with the SDK: `SupportBridge.install(server,
+options)` receives the `@modelcontextprotocol/sdk` `McpServer` instance and
+returns the `instrumentTool()` and `close()` lifecycle API. There is no
+Pitch-Fork MCP adapter layer or adapter-specific configuration.
+
 ## Project layout
 
 ```
@@ -128,10 +133,12 @@ itself. For Render, open the service's **Environment** settings and set:
 | `SUPPORTBRIDGE_MODE` | `assist` |
 
 SupportBridge remains disabled until `SUPPORTBRIDGE_API_KEY` is set. The server
-uses the SDK's conventional environment variables. SDK
+passes configuration directly to SupportBridge SDK 0.10.3, enables the SDK's
+offer card, and uses the exported standard assistance-intent and revenue-signal
+catalogs. SDK
 capability metadata includes `optional-assistance-v1` and
 `durable-offer-delivery-v1`. The
-authenticated WorkOS adapter sends the verified OAuth subject, organization,
+authenticated WorkOS identity resolver sends the verified OAuth subject, organization,
 and session identifiers. It may also send the approved `name` and verified
 `email` fields returned by WorkOS UserInfo. The server requests the `openid`,
 `profile`, and `email` scopes, validates each access token, calls the configured issuer's

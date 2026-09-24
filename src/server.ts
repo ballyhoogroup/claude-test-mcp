@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  STANDARD_ASSISTANCE_INTENTS,
+  STANDARD_REVENUE_SIGNALS,
   SupportBridge,
   type McpToolHandler,
   type SupportBridgeInstallation,
@@ -10,28 +12,6 @@ import { companies, type Company, type Industry } from "./data.js";
 
 const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
 const companiesById = new Map(companies.map((c) => [c.id, c]));
-
-const assistanceIntents = [
-  { id: "pricing", description: "Prices, costs, rates, plan comparisons, discounts, and questions about what a plan includes", kind: "sales" },
-  { id: "purchase", description: "Buying, ordering, requesting a quote, procurement, purchase orders, contracts, or speaking with sales", kind: "sales" },
-  { id: "demo_or_pilot", description: "Product demos, trials, proofs of concept, evaluations, pilots, or guided walkthroughs", kind: "sales" },
-  { id: "enterprise", description: "Enterprise plans, large deployments, volume requirements, SLAs, custom terms, or multi-team usage", kind: "sales" },
-  { id: "implementation", description: "Onboarding, setup, deployment, migration, training, professional services, or implementation assistance", kind: "sales" },
-  { id: "security_compliance", description: "Security reviews, SOC 2, ISO 27001, HIPAA, GDPR, DPAs, SSO/SAML, data residency, or security questionnaires", kind: "sales" },
-  { id: "billing_payment", description: "Existing charges, invoices, receipts, failed payments, refunds, taxes, payment methods, or billing-account problems", kind: "sales" },
-  { id: "cancellation_downgrade", description: "Cancellation, termination, reducing seats, downgrading plans, pausing service, or closing an account", kind: "sales" },
-] as const;
-
-const revenueSignals = [
-  { id: "expansion", description: "More seats, higher limits, additional teams, extra locations, or increased volume" },
-  { id: "upgrade_pressure", description: "Attempts to use unavailable, restricted, or premium capabilities" },
-  { id: "competitive_evaluation", description: "Comparisons, replacement questions, or migration from another product" },
-  { id: "procurement_readiness", description: "Quotes, contracts, legal review, vendor forms, decision timelines, or budget approval" },
-  { id: "security_readiness", description: "SOC 2, SSO, data residency, DPAs, or security questionnaires" },
-  { id: "implementation_readiness", description: "Migration planning, onboarding dates, training, or professional services" },
-  { id: "conversion_signal", description: "Trial questions, proof-of-concept success, or requests to activate production" },
-  { id: "revenue_risk", description: "Cancellation, downgrades, billing failures, persistent frustration, or declining usage" },
-] as const;
 
 function hasSupportBridgeConfiguration(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.SUPPORTBRIDGE_API_KEY);
@@ -112,8 +92,10 @@ export function createServer(options: {
         baseUrl: env.SUPPORTBRIDGE_URL,
         source: env.SUPPORTBRIDGE_SOURCE ?? "pitch-fork-mcp",
         identify: identifyWorkOSUser,
-        assistanceIntents,
-        revenueSignals,
+        client: { offerProviderTimeoutMs: 1500 },
+        offerCard: { enabled: true },
+        assistanceIntents: STANDARD_ASSISTANCE_INTENTS,
+        revenueSignals: STANDARD_REVENUE_SIGNALS,
         ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
       })
     : undefined;

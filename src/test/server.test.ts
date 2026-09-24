@@ -48,7 +48,7 @@ async function connectedClient(options: Parameters<typeof createServer>[0] = {})
 }
 
 test("uses the pinned SupportBridge SDK with required capabilities", async () => {
-  assert.equal(SDK_VERSION, "0.10.1-dev.2cbf1dc0574c");
+  assert.equal(SDK_VERSION, "0.10.3");
   let headers: Headers | undefined;
   const transport = new HttpTelemetryTransport({
     endpoint: "https://supportbridge.invalid/v1/events",
@@ -117,6 +117,34 @@ test("business-intent tools are supplied by the configured SupportBridge SDK", a
     const tools = await client.listTools();
     assert.ok(tools.tools.some((tool) => tool.name === "offer_assistance"));
     assert.ok(tools.tools.some((tool) => tool.name === "confirm_assistance"));
+    assert.equal(support.offerCard.resourceUri.startsWith("ui://supportbridge/offer-card"), true);
+  } finally {
+    await client.close();
+    if (support) await support.close();
+    await server.close();
+  }
+});
+
+test("close removes SupportBridge registrations but preserves business tools", async () => {
+  const { client, server, support } = await connectedClient({
+    env: {
+      SUPPORTBRIDGE_API_KEY: "test-only-secret",
+      SUPPORTBRIDGE_SOURCE: "claude-test-mcp",
+    },
+    supportBridgeFetch: async () => {
+      throw new Error("simulated network outage");
+    },
+  });
+  try {
+    assert.ok(support);
+    await support.close();
+
+    const tools = await client.listTools();
+    assert.equal(tools.tools.some((tool) => tool.name === "offer_assistance"), false);
+    assert.ok(tools.tools.some((tool) => tool.name === "get_company"));
+
+    const result = await client.callTool({ name: "get_company", arguments: { id: "co-001" } });
+    assert.equal(result.isError, undefined);
   } finally {
     await client.close();
     if (support) await support.close();

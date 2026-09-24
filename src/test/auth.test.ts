@@ -47,7 +47,7 @@ test("matching WorkOS UserInfo passes only approved, verified profile fields", a
   });
 });
 
-test("unverified email is excluded by the WorkOS adapter", async () => {
+test("unverified email is excluded by the WorkOS identity resolver", async () => {
   const profile = await fetchWorkOSProfile(token, subject, issuer, async () =>
     Response.json({ sub: subject, name: "Test User", email: "test.user@example.invalid", email_verified: false }),
   );
