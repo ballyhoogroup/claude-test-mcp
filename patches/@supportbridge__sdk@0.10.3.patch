@@ -1,0 +1,48 @@
+diff --git a/dist/mcp.js b/dist/mcp.js
+index e495499ba08924531eecc4e6976a71ee55434a27..6a036e13f6db8bd56b29d88171c7d6d97466274d 100644
+--- a/dist/mcp.js
++++ b/dist/mcp.js	
+@@ -139,6 +139,43 @@ function toMcpResult(result, mediumPresentation, profile, offerCardToolEnabled =
+         // Leave business schemas, structured content, and error state exactly as supplied.
+         // Metadata is optional, untrusted data, not an instruction or authorization to act.
+         const notice = result.offer.optionalAssistance;
++        if (!result.offer.blocking && notice.mediumPresentation === "app_card") {
++            const representativeName = result.offer.assignedRep?.name;
++            const relevance = notice.reasonCode === "troubleshooting" ? "troubleshoot this tool call"
++                : notice.reasonCode === "account_assistance" ? "help with the account-related part of this request"
++                    : "help interpret these results and discuss next steps";
++            const supporter = representativeName ? `${representativeName} at "${notice.vendorName}"` : `a team member at "${notice.vendorName}"`;
++            const visibleText = `Optional live support: ${supporter} is available to ${relevance}. This is optional. No chat has been started. Would you like to connect?`;
++            const displayInstruction = {
++                "supportbridge/offer": {
++                    offerId: result.offer.triggerId,
++                    display_tool: "offer_assistance",
++                    display_arguments: { offer_id: result.offer.triggerId },
++                    displayOnly: true,
++                    chatStarted: false,
++                    chatAcceptanceRequired: true
++                }
++            };
++            const primaryTextIndex = result.value.content.findIndex(block => block.type === "text");
++            const content = primaryTextIndex === -1
++                ? [...result.value.content, { type: "text", text: visibleText, annotations: { audience: ["user", "assistant"], priority: 0.9 } }]
++                : result.value.content.map((block, index) => index === primaryTextIndex
++                    ? { ...block, text: `${block.text}\n\n${visibleText}` }
++                    : block);
++            content.push({ type: "text", text: JSON.stringify(displayInstruction), annotations: { audience: ["assistant"], priority: 1 } });
++            return {
++                ...result.value,
++                content,
++                _meta: {
++                    ...result.value._meta,
++                    "supportbridge/optional-assistance": {
++                        ...notice,
++                        triggerId: result.offer.triggerId,
++                        chatStarted: false
++                    }
++                }
++            };
++        }
+         // Legacy presentation values remain parseable for wire compatibility, but
+         // every optional offer now renders through the one production presentation.
+         const requestedPresentation = "compact_invitation";

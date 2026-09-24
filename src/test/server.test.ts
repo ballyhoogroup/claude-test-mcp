@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { HttpTelemetryTransport, SDK_VERSION } from "@supportbridge/sdk";
+import { HttpTelemetryTransport, instrumentMcpTool, SDK_VERSION } from "@supportbridge/sdk";
 import { identifyWorkOSUser } from "../auth.js";
 import { createServer } from "../server.js";
 
@@ -69,6 +69,96 @@ test("uses the pinned SupportBridge SDK with required capabilities", async () =>
     message: "test",
   }]);
   assert.equal(headers?.get("user-agent"), `supportbridge-sdk/${SDK_VERSION}`);
+});
+
+test("manual app-card offers tell ChatGPT to display the offer without starting chat", async () => {
+  const triggerId = "trigger-manual-offer-123";
+  const originalStructuredContent = { company: { id: "co-001", name: "LedgerLeap" } };
+  const client = {
+    privacy: { captureAgentContent: false },
+    instrumentTool: async (_invocation: unknown, handler: () => Promise<unknown>) => ({
+      kind: "result",
+      value: await handler(),
+      offer: {
+        triggerId,
+        reason: "Optional assistance is available",
+        blocking: false,
+        requiresAcknowledgement: false,
+        retryOriginalRequestAfterDecision: false,
+        optionalAssistance: {
+          version: "optional-assistance-v1",
+          offerId: "stale-notice-offer-id",
+          vendorName: "Alpha",
+          reasonCode: "interpret_results",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          disclosureVersion: "v1",
+          disclosure: "Support is optional.",
+          acceptanceRequired: true,
+          deliveryMode: "ask_for_choice",
+          mediumPresentation: "app_card",
+          context: {
+            eventId: "event-123",
+            toolName: "get_company",
+            outcome: "success",
+            at: "2026-09-24T00:00:00.000Z",
+          },
+        },
+      },
+    }),
+  };
+  const handler = instrumentMcpTool(
+    client as never,
+    "get_company",
+    async () => ({
+      content: [{ type: "text", text: "LedgerLeap (co-001)" }],
+      structuredContent: originalStructuredContent,
+      isError: false,
+    }),
+    { identify: () => undefined },
+  );
+
+  const result = await handler({});
+  const primaryText = result.content[0];
+  assert.equal(primaryText.type, "text");
+  assert.match(primaryText.text, /^LedgerLeap \(co-001\)[\s\S]+Optional live support:/);
+
+  const displayBlock = result.content.find(
+    (block) => block.annotations?.audience?.length === 1 && block.annotations.audience[0] === "assistant",
+  );
+  assert.ok(displayBlock);
+  assert.deepEqual(JSON.parse(displayBlock.text), {
+    "supportbridge/offer": {
+      offerId: triggerId,
+      display_tool: "offer_assistance",
+      display_arguments: { offer_id: triggerId },
+      displayOnly: true,
+      chatStarted: false,
+      chatAcceptanceRequired: true,
+    },
+  });
+  assert.deepEqual(result.structuredContent, originalStructuredContent);
+  assert.equal(result.isError, false);
+  assert.deepEqual(result._meta?.["supportbridge/optional-assistance"], {
+    version: "optional-assistance-v1",
+    offerId: "stale-notice-offer-id",
+    vendorName: "Alpha",
+    reasonCode: "interpret_results",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    disclosureVersion: "v1",
+    disclosure: "Support is optional.",
+    acceptanceRequired: true,
+    deliveryMode: "ask_for_choice",
+    mediumPresentation: "app_card",
+    context: {
+      eventId: "event-123",
+      toolName: "get_company",
+      outcome: "success",
+      at: "2026-09-24T00:00:00.000Z",
+    },
+    triggerId,
+    chatStarted: false,
+  });
+  assert.equal(result._meta?.["openai/outputTemplate"], undefined);
 });
 
 test("original business tools keep their schemas and results", async () => {

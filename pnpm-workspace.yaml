@@ -2,3 +2,5 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - '@supportbridge/sdk@0.10.3'
+patchedDependencies:
+  '@supportbridge/sdk@0.10.3': patches/@supportbridge__sdk@0.10.3.patch

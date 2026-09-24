@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@supportbridge/sdk@0.10.3': d9070477784b3344633a9d4b13fa71b5064d7dc7b6124c8782bb0703a46257af
+
 importers:
 
   .:
@@ -13,7 +16,7 @@ importers:
         version: 1.30.0(zod@3.25.76)
       '@supportbridge/sdk':
         specifier: 0.10.3
-        version: 0.10.3(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))
+        version: 0.10.3(patch_hash=d9070477784b3344633a9d4b13fa71b5064d7dc7b6124c8782bb0703a46257af)(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))
       express:
         specifier: ^4.21.2
         version: 4.22.3
@@ -869,7 +872,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@supportbridge/sdk@0.10.3(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))':
+  '@supportbridge/sdk@0.10.3(patch_hash=d9070477784b3344633a9d4b13fa71b5064d7dc7b6124c8782bb0703a46257af)(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))':
     dependencies:
       '@modelcontextprotocol/ext-apps': 1.7.5(@modelcontextprotocol/sdk@1.30.0(zod@3.25.76))(zod@3.25.76)
       '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
