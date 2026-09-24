@@ -378,9 +378,9 @@ function chatHtml() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Assistance chat</title>
 <style>
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
+html,body{height:520px;min-height:520px;margin:0}
 body{
-  display:flex;flex-direction:column;min-height:100%;
+  display:flex;flex-direction:column;height:520px;overflow:hidden;
   background:#FAFAF7;color:#1C1C19;
   font:400 14px/20px Inter,"Segoe UI",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
@@ -407,7 +407,7 @@ body{
 #end:hover:not(:disabled){color:#1C1C19}
 #end:disabled{opacity:.45;cursor:not-allowed}
 #log{
-  flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
+  flex:1;min-height:320px;overflow:auto;overscroll-behavior:contain;
   padding:16px;display:flex;flex-direction:column;gap:0;
 }
 .chat-empty{
@@ -611,6 +611,7 @@ endEl.onclick=async()=>{
 };
 setHeader();
 setComposerEnabled(false);
+requestFrame(520);
 setInterval(refresh,2000);
 </script></body></html>`;
 }
@@ -619,17 +620,13 @@ function intentOfferHtml() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Assistance offer</title>
 <style>
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
+html,body{margin:0;background:#FAFAF7}
 body{
-  display:flex;align-items:center;justify-content:center;min-height:100%;
-  margin:0;padding:20px;background:#FAFAF7;color:#1C1C19;
+  padding:20px 20px 16px;color:#1C1C19;
   font:400 14px/20px Inter,"Segoe UI",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
 }
-.card{
-  width:100%;max-width:380px;padding:24px;border:1px solid #E8E8E2;border-radius:16px;
-  background:#fff;box-shadow:0 8px 24px rgba(28,28,25,.06);
-}
+.card{width:100%;padding:0;background:transparent}
 .eyebrow{
   margin:0 0 8px;color:#6B6B62;letter-spacing:.06em;text-transform:uppercase;
   font:500 11px/16px Inter,"Segoe UI",system-ui,sans-serif;
@@ -674,6 +671,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <script>${bridgeScript()}
 let offerId="";
 let settled=false;
+let pendingAction=false;
 const repEl=document.getElementById("rep");
 const intentEl=document.getElementById("intent");
 const summaryEl=document.getElementById("summary");
@@ -693,8 +691,11 @@ function apply(data){
   if(payload.representativeName){
     leadEl.textContent=payload.representativeName+" can help with this request. Accepting contacts support; viewing this card does not.";
   }
+  if(!pendingAction) setBusy(false);
+  fitFrame();
 }
 function setBusy(busy){
+  pendingAction=busy;
   acceptEl.disabled=busy||settled||!offerId;
   declineEl.disabled=busy||settled||!offerId;
 }
@@ -737,7 +738,12 @@ declineEl.onclick=async()=>{
     setBusy(false);
   }
 };
-setBusy(true);
+function fitFrame(){
+  requestFrame(Math.max(440, Math.ceil(document.documentElement.scrollHeight)));
+}
+setBusy(false);
+fitFrame();
+requestAnimationFrame(fitFrame);
 </script></body></html>`;
 }
 
@@ -747,14 +753,19 @@ const pending=new Map();
 let nextId=1;
 let toolHandler=()=>{};
 function onToolResult(fn){toolHandler=fn;}
-function readHostOutput(){
+function hostOutput(){
   try{
-    if(window.openai&&window.openai.toolOutput)return Promise.resolve(window.openai.toolOutput);
-  }catch(e){}
-  return Promise.resolve({});
+    const output=window.openai&&window.openai.toolOutput;
+    if(!output||typeof output!=="object")return null;
+    return output.structuredContent||output;
+  }catch(e){return null;}
+}
+function readHostOutput(){
+  return Promise.resolve(hostOutput()||{});
 }
 window.addEventListener("openai:set_globals",()=>{
-  try{ if(window.openai&&window.openai.toolOutput) toolHandler({structuredContent:window.openai.toolOutput}); }catch(e){}
+  const output=hostOutput();
+  if(output)toolHandler({structuredContent:output});
 });
 window.addEventListener("message",event=>{
   const msg=event.data;
@@ -762,6 +773,15 @@ window.addEventListener("message",event=>{
   if(msg.id!=null&&pending.has(msg.id)){pending.get(msg.id)(msg);pending.delete(msg.id);return;}
   if(msg.method==="ui/notifications/tool-result")toolHandler(msg.params||{});
 });
+let frameHeight=0;
+function requestFrame(height){
+  frameHeight=height;
+  const size={width:480,height};
+  parent.postMessage({jsonrpc:"2.0",method:"ui/notifications/size-changed",params:size},"*");
+  try{
+    if(window.openai&&typeof window.openai.notifyIntrinsicHeight==="function") window.openai.notifyIntrinsicHeight(height);
+  }catch(e){}
+}
 function rpc(method,params){
   const id=nextId++;
   return new Promise(resolve=>{pending.set(id,resolve);parent.postMessage({jsonrpc:"2.0",id,method,params},"*");});
@@ -777,6 +797,7 @@ async function callTool(name,args){
 }
 rpc("ui/initialize",{protocolVersion:"2026-01-26",appCapabilities:{availableDisplayModes:["inline"]}}).then(()=>{
   parent.postMessage({jsonrpc:"2.0",method:"ui/notifications/initialized"},"*");
+  if(frameHeight) requestFrame(frameHeight);
 }).catch(()=>{});
 `;
 }
