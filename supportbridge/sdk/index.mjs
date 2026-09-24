@@ -50,12 +50,7 @@ SupportBridge.install = function install(server, options) {
 
   const chatMeta = uiMeta(CHAT_RESOURCE);
   const intentOfferMeta = uiMeta(INTENT_OFFER_RESOURCE);
-  const appOnlyChatMeta = {
-    ui: { resourceUri: CHAT_RESOURCE, visibility: ["app"] },
-    "ui/resourceUri": CHAT_RESOURCE,
-    "openai/outputTemplate": CHAT_RESOURCE,
-    "openai/widgetAccessible": true
-  };
+  const appOnlyChatMeta = uiMeta(CHAT_RESOURCE);
 
   server.registerTool("offer_assistance", {
     title: "Offer assistance",
@@ -620,51 +615,44 @@ function intentOfferHtml() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Assistance offer</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;background:#FAFAF7}
+html,body{margin:0;background:transparent}
 body{
-  padding:20px 20px 16px;color:#1C1C19;
-  font:400 14px/20px Inter,"Segoe UI",system-ui,sans-serif;
+  padding:4px 2px 8px;color:#1C1C19;
+  font:400 15px/22px Inter,"Segoe UI",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
 }
-.card{width:100%;padding:0;background:transparent}
+.card{
+  width:100%;padding:16px 16px 14px;border:1px solid #E6E6E6;border-radius:16px;background:#fff;
+}
 .eyebrow{
-  margin:0 0 8px;color:#6B6B62;letter-spacing:.06em;text-transform:uppercase;
-  font:500 11px/16px Inter,"Segoe UI",system-ui,sans-serif;
+  margin:0 0 8px;color:#1F7A4D;letter-spacing:.04em;text-transform:uppercase;
+  font:700 12px/16px Inter,"Segoe UI",system-ui,sans-serif;
 }
-h1{
-  margin:0 0 8px;font:600 20px/28px Inter,"Segoe UI",system-ui,sans-serif;letter-spacing:-.02em;
-}
-.lead{margin:0 0 20px;color:#6B6B62;font:400 14px/20px Inter,"Segoe UI",system-ui,sans-serif}
-.row{display:grid;gap:4px;margin:0 0 14px}
-.row dt{color:#6B6B62;font:500 12px/16px Inter,"Segoe UI",system-ui,sans-serif}
-.row dd{margin:0;font:500 14px/20px Inter,"Segoe UI",system-ui,sans-serif;overflow-wrap:anywhere}
-.actions{display:flex;gap:10px;margin-top:22px}
+h1{margin:0 0 8px;font:500 16px/22px Inter,"Segoe UI",system-ui,sans-serif}
+.note{margin:0;color:#8A8A82;font:400 13px/18px Inter,"Segoe UI",system-ui,sans-serif}
+.actions{display:flex;gap:8px;margin-top:14px}
 button{
-  flex:1;min-height:40px;margin:0;padding:10px 14px;border-radius:10px;
+  flex:none;min-height:36px;margin:0;padding:8px 14px;border-radius:8px;
   font:600 14px/20px Inter,"Segoe UI",system-ui,sans-serif;cursor:pointer;
 }
-#accept{border:1px solid #2F7D4F;background:#2F7D4F;color:#fff}
-#accept:hover:not(:disabled){background:#256341}
-#decline{border:1px solid #D5D5CD;background:#fff;color:#1C1C19}
-#decline:hover:not(:disabled){background:#F4F4F0}
+#accept{border:1px solid #1F7A4D;background:#1F7A4D;color:#fff}
+#accept:hover:not(:disabled){background:#18693F}
+#decline{border:1px solid #E0E0E0;background:#fff;color:#1C1C19}
+#decline:hover:not(:disabled){background:#F6F6F4}
 button:disabled{opacity:.5;cursor:not-allowed}
-#status{margin:14px 0 0;min-height:20px;color:#6B6B62;font:400 13px/18px Inter,"Segoe UI",system-ui,sans-serif}
+#status{margin:8px 0 0;min-height:0;color:#6B6B62;font:400 12px/16px Inter,"Segoe UI",system-ui,sans-serif}
+#status:empty{display:none}
 #status.error{color:#A32D2D}
 :where(button):focus-visible{outline:2px solid #2F7D4F;outline-offset:2px}
 </style></head>
 <body>
   <section class="card" aria-labelledby="offer-title">
-    <p class="eyebrow">Optional assistance</p>
-    <h1 id="offer-title">Talk with someone live</h1>
-    <p class="lead" id="lead">A representative can help with this request. Accepting contacts support; viewing this card does not.</p>
-    <dl>
-      <div class="row"><dt>Representative</dt><dd id="rep">Available soon</dd></div>
-      <div class="row"><dt>Topic</dt><dd id="intent">—</dd></div>
-      <div class="row"><dt>Summary</dt><dd id="summary">—</dd></div>
-    </dl>
+    <p class="eyebrow" id="eyebrow">Support available</p>
+    <h1 id="offer-title">Support is available to review this result. Would you like to connect?</h1>
+    <p class="note" id="note">Nothing is sent until you choose Chat with support.</p>
     <div class="actions">
-      <button id="decline" type="button">Decline</button>
-      <button id="accept" type="button">Accept</button>
+      <button id="accept" type="button">Chat with support</button>
+      <button id="decline" type="button">Not now</button>
     </div>
     <p id="status" role="status" aria-live="polite"></p>
   </section>
@@ -672,25 +660,20 @@ button:disabled{opacity:.5;cursor:not-allowed}
 let offerId="";
 let settled=false;
 let pendingAction=false;
-const repEl=document.getElementById("rep");
-const intentEl=document.getElementById("intent");
-const summaryEl=document.getElementById("summary");
-const leadEl=document.getElementById("lead");
+const eyebrowEl=document.getElementById("eyebrow");
+const titleEl=document.getElementById("offer-title");
+const noteEl=document.getElementById("note");
 const statusEl=document.getElementById("status");
 const acceptEl=document.getElementById("accept");
 const declineEl=document.getElementById("decline");
 function apply(data){
   const payload=data||{};
   offerId=payload.offerId||payload.offer_id||offerId;
-  if(payload.representativeName){
-    const role=payload.representativeRole?(" · "+payload.representativeRole):"";
-    repEl.textContent=payload.representativeName+role;
-  }
-  if(payload.intentLabel||payload.intent)intentEl.textContent=payload.intentLabel||payload.intent;
-  if(payload.issueSummary)summaryEl.textContent=payload.issueSummary;
-  if(payload.representativeName){
-    leadEl.textContent=payload.representativeName+" can help with this request. Accepting contacts support; viewing this card does not.";
-  }
+  const vendor=payload.vendorName||"Support";
+  eyebrowEl.textContent=(vendor+" support available").toUpperCase();
+  titleEl.textContent=vendor+" support is available to review this result. Would you like to connect?";
+  const who=payload.representativeName?(payload.representativeName+(payload.representativeRole?", "+payload.representativeRole:"")):vendor;
+  noteEl.textContent="Starting a chat contacts "+who+". Nothing is sent until you choose Chat with support.";
   if(!pendingAction) setBusy(false);
   fitFrame();
 }
@@ -739,7 +722,7 @@ declineEl.onclick=async()=>{
   }
 };
 function fitFrame(){
-  requestFrame(Math.max(440, Math.ceil(document.documentElement.scrollHeight)));
+  requestFrame(Math.ceil(document.documentElement.scrollHeight));
 }
 setBusy(false);
 fitFrame();
