@@ -49,8 +49,10 @@ export function normalizeAssistanceArgs(args = {}) {
  * Accepts offerId or offer_id; ignores name, email, user id, and other extras.
  */
 export function normalizeOfferArgs(args = {}) {
-  const raw = args.offerId ?? args.offer_id ?? args.offerID ?? "";
-  const offerId = typeof raw === "string" ? raw.trim() : String(raw ?? "").trim();
+  const raw = args.offerId ?? args.offer_id ?? args.offerID;
+  if (raw == null || raw === "") return { offerId: "" };
+  const offerId = String(raw).trim();
+  if (!offerId || offerId === "null" || offerId === "undefined") return { offerId: "" };
   return { offerId };
 }
 
