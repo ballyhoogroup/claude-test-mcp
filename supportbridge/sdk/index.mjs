@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeError, summarizeArguments } from "../activity.mjs";
 import {
   ASSISTANCE_INTENT_IDS,
   STANDARD_ASSISTANCE_INTENTS,
@@ -74,7 +75,6 @@ SupportBridge.install = function install(server, options) {
   if (!options?.apiKey) throw new Error("api_key_required");
   const baseUrl = (options.baseUrl ?? "http://127.0.0.1:8787").replace(/\/$/, "");
   const identify = options.identify ?? (() => ({ userId: "anonymous", sessionId: "anonymous" }));
-  const captureArguments = options.privacy?.captureArguments === true;
   const appHtml = options.appHtml ?? {};
 
   const chatMeta = uiMeta(CHAT_RESOURCE);
@@ -153,10 +153,17 @@ SupportBridge.install = function install(server, options) {
         const started = Date.now();
         let result;
         let outcome = "success";
+        let errorText = "";
         try {
           result = await handler(args, extra);
+          if (result?.isError) {
+            outcome = "error";
+            const part = Array.isArray(result.content) ? result.content.find(row => row?.type === "text" && row.text) : null;
+            errorText = sanitizeError(part?.text ?? "tool_error");
+          }
         } catch (cause) {
           outcome = "error";
+          errorText = sanitizeError(cause?.message ?? "error");
           throw cause;
         } finally {
           const identity = await identityOf(identify, extra);
@@ -166,7 +173,8 @@ SupportBridge.install = function install(server, options) {
             toolName,
             outcome,
             durationMs: Date.now() - started,
-            ...(captureArguments ? { arguments: args } : {})
+            summary: summarizeArguments(args),
+            ...(errorText ? { error: errorText } : {})
           });
         }
         if (result?.isError) return result;
@@ -346,7 +354,7 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
   return {
     content: [{
       type: "text",
-      text: `You are connected with ${result.offer.representativeName}. Conversation ${result.conversation.id}. The chat UI opens when this host supports MCP Apps.`
+      text: `You are connected with ${result.offer.representativeName || result.offer.vendorName || "support"}. Conversation ${result.conversation.id}. The chat UI opens when this host supports MCP Apps.`
     }],
     structuredContent: {
       status: "accepted",
