@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { ASSISTANCE_INTENT_IDS, STANDARD_ASSISTANCE_INTENTS, intentById } from "../intents.mjs";
+import { ASSISTANCE_INTENT_IDS, STANDARD_ASSISTANCE_INTENTS, intentById, normalizeAssistanceArgs } from "../intents.mjs";
 
-export { STANDARD_ASSISTANCE_INTENTS, ASSISTANCE_INTENT_IDS } from "../intents.mjs";
+export { STANDARD_ASSISTANCE_INTENTS, ASSISTANCE_INTENT_IDS, normalizeAssistanceArgs } from "../intents.mjs";
 
 export const CHAT_RESOURCE = "ui://supportbridge/chat";
 export const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
@@ -12,7 +12,8 @@ const INTENT_CATALOG_TEXT = STANDARD_ASSISTANCE_INTENTS
   .join("; ");
 
 export const DISPLAY_INSTRUCTIONS = [
-  `When the user request matches an enabled business intent, call offer_assistance with that intent and a short issueSummary. Matching intents: ${INTENT_CATALOG_TEXT}.`,
+  `If the user request matches an enabled business intent, call offer_assistance with that intent and a short issueSummary as the next tool call. Matching intents: ${INTENT_CATALOG_TEXT}.`,
+  "Do not call a business data tool first—such as search, list industries, list companies, or similar—to try to answer pricing, plans, a demo, enterprise, implementation, security, billing, or cancellation. Those tools do not contain the support offer.",
   "Do not ask a preliminary \"Would you like me to contact support?\" question—the offer_assistance card is the consent step.",
   "Calling offer_assistance only shows an optional-assistance card. It does not create a conversation, reserve messaging, or contact support.",
   "Do not say support was contacted until confirm_assistance succeeds for that offer id.",
@@ -57,17 +58,18 @@ SupportBridge.install = function install(server, options) {
     title: "Offer assistance",
     description: [
       "Show an optional live-assistance consent card for a matching business intent.",
-      `Call this when the user request matches one of these intents: ${INTENT_CATALOG_TEXT}.`,
+      `If the user request matches one of these intents, call this tool as the next tool call with that intent and a short issueSummary: ${INTENT_CATALOG_TEXT}.`,
+      "Do not call a business data tool first (search, list industries, list companies, or similar). Those tools do not contain the support offer.",
       "This only displays the card. It does not contact support, create a conversation, or message a representative.",
       "Do not ask \"Would you like me to contact support?\" first—the card is the consent step.",
       "Pass only intent and issueSummary. Do not pass a person's name, user id, email, or offer id. The server creates the offer id."
     ].join(" "),
     inputSchema: {
-      intent: z.enum([ASSISTANCE_INTENT_IDS[0], ...ASSISTANCE_INTENT_IDS.slice(1)]).describe(`Business intent id. Match meanings: ${INTENT_CATALOG_TEXT}`),
-      issueSummary: z.string().min(1).max(2_000).describe("Short summary of the user request for the consent card")
+      intent: z.string().optional().describe(`Business intent id or free text. Preferred ids: ${ASSISTANCE_INTENT_IDS.join(", ")}. Synonyms like Pricing or support are accepted.`),
+      issueSummary: z.string().optional().describe("Short summary of the user request for the consent card. Optional; a default is used when omitted.")
     },
     _meta: intentOfferMeta
-  }, async (args, extra) => createIntentOffer(baseUrl, options.apiKey, await identityOf(identify, extra), args));
+  }, async (args, extra) => createIntentOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeAssistanceArgs(args)));
 
   server.registerTool("confirm_assistance", {
     title: "Confirm assistance",
@@ -218,16 +220,37 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
     method: "POST",
     body: { ...identity, intent, issueSummary }
   });
-  if (!result?.offer) {
+  if (result?.conversation?.id) {
     return {
       content: [{
         type: "text",
-        text: "Live assistance is not being offered for this request right now. Continue helping the user normally; no one has been contacted."
+        text: `You already have a live chat with ${result.conversation.representativeName || "support"}. Opening that conversation.`
       }],
       structuredContent: {
-        status: result?.reason ?? result?.error ?? "assistance_unavailable",
+        status: "accepted",
+        offered: false,
+        chatStarted: true,
+        conversationId: result.conversation.id,
+        representativeName: result.conversation.representativeName
+      },
+      _meta: uiMeta(CHAT_RESOURCE)
+    };
+  }
+  if (!result?.offer) {
+    const reason = result?.reason ?? result?.error ?? "assistance_unavailable";
+    const unavailable = reason === "representative_unavailable";
+    return {
+      content: [{
+        type: "text",
+        text: unavailable
+          ? "No representative is available right now. Continue helping the user normally; no one has been contacted."
+          : "Live assistance is not being offered for this request right now. Continue helping the user normally; no one has been contacted."
+      }],
+      structuredContent: {
+        status: reason,
         chatStarted: false,
-        offered: false
+        offered: false,
+        available: !unavailable
       }
     };
   }
@@ -276,9 +299,15 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
     body: identity
   });
   if (!result?.conversation) {
+    const status = result?.error ?? "offer_not_active";
     return {
-      content: [{ type: "text", text: "The assistance offer could not be accepted. No chat has started." }],
-      structuredContent: { status: result?.error ?? "offer_not_active", chatStarted: false },
+      content: [{
+        type: "text",
+        text: status === "representative_unavailable"
+          ? "No representative is available right now. No chat has started."
+          : "The assistance offer could not be accepted. No chat has started."
+      }],
+      structuredContent: { status, chatStarted: false },
       isError: true
     };
   }
@@ -680,6 +709,29 @@ const acceptEl=document.getElementById("accept");
 const declineEl=document.getElementById("decline");
 function apply(data){
   const payload=data||{};
+  if(payload.chatStarted&&payload.conversationId){
+    settled=true;
+    offerId=payload.offerId||payload.offer_id||offerId;
+    titleEl.textContent="You are already connected.";
+    noteEl.textContent="Opening your live chat.";
+    statusEl.classList.remove("error");
+    statusEl.textContent="Connected. Opening chat…";
+    setBusy(true);
+    fitFrame();
+    return;
+  }
+  if(payload.status==="representative_unavailable"||payload.available===false){
+    settled=true;
+    offerId="";
+    eyebrowEl.textContent="SUPPORT UNAVAILABLE";
+    titleEl.textContent="No representative is available right now.";
+    noteEl.textContent="Nothing was sent. Try again later.";
+    statusEl.classList.add("error");
+    statusEl.textContent="No one is available.";
+    setBusy(true);
+    fitFrame();
+    return;
+  }
   offerId=payload.offerId||payload.offer_id||offerId;
   const vendor=payload.vendorName||"";
   if(vendor){
@@ -709,6 +761,10 @@ acceptEl.onclick=async()=>{
     if(payload.chatStarted||payload.status==="accepted"){
       settled=true;
       statusEl.textContent="Connected. Opening chat…";
+    }else if(payload.status==="representative_unavailable"){
+      statusEl.classList.add("error");
+      statusEl.textContent="No representative is available right now.";
+      setBusy(false);
     }else{
       statusEl.classList.add("error");
       statusEl.textContent=payload.status||"Could not accept this offer.";

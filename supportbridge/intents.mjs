@@ -19,3 +19,46 @@ export function intentById(id) {
 export function defaultIntentToggles(enabled) {
   return Object.fromEntries(ASSISTANCE_INTENT_IDS.map(id => [id, Boolean(enabled)]));
 }
+
+const DEFAULT_SUMMARIES = {
+  pricing: "Customer asked about pricing or plans.",
+  purchase: "Customer asked to talk with support or sales.",
+  demo_or_pilot: "Customer asked about a demo or pilot.",
+  enterprise: "Customer asked about enterprise options.",
+  implementation: "Customer asked about implementation or onboarding.",
+  security_compliance: "Customer asked about security or compliance.",
+  billing_payment: "Customer asked about billing or payment.",
+  cancellation_downgrade: "Customer asked about cancellation or downgrade."
+};
+
+/**
+ * Normalize host/model tool args into a known intent id and issue summary.
+ * Accepts loose values like "Pricing", "support", missing summaries, and extra fields.
+ */
+export function normalizeAssistanceArgs(args = {}) {
+  const rawIntent = String(args.intent ?? args.Intent ?? "").trim();
+  const rawSummary = String(args.issueSummary ?? args.issue_summary ?? args.summary ?? "").trim().slice(0, 2_000);
+  const haystack = `${rawIntent} ${rawSummary}`.toLowerCase();
+  const intent = resolveAssistanceIntent(rawIntent, haystack);
+  const issueSummary = rawSummary || DEFAULT_SUMMARIES[intent] || "Customer asked for live assistance.";
+  return { intent, issueSummary };
+}
+
+function resolveAssistanceIntent(rawIntent, haystack) {
+  const normalized = rawIntent.toLowerCase().replace(/[\s-]+/g, "_");
+  if (intentById(normalized)) return normalized;
+
+  if (/\b(pric|plan|cost|discount|quote)\b/.test(haystack) || /pric|plan|cost|discount/.test(normalized)) return "pricing";
+  if (/\b(purchas|buy|procure|contract|sales)\b/.test(haystack) || /purchas|buy|procure/.test(normalized)) return "purchase";
+  if (/\b(demo|pilot|trial|evaluat|walkthrough)\b/.test(haystack) || /demo|pilot|trial/.test(normalized)) return "demo_or_pilot";
+  if (/\b(enterprise|volume|sla)\b/.test(haystack) || /enterprise/.test(normalized)) return "enterprise";
+  if (/\b(implement|onboard|migrat|train|professional.?service)\b/.test(haystack) || /implement|onboard/.test(normalized)) return "implementation";
+  if (/\b(secur|complian|soc|hipaa|gdpr|sso|dpa)\b/.test(haystack) || /secur|complian/.test(normalized)) return "security_compliance";
+  if (/\b(bill|invoice|refund|tax|payment)\b/.test(haystack) || /bill|invoice|payment/.test(normalized)) return "billing_payment";
+  if (/\b(cancel|downgrad|close.?account|churn)\b/.test(haystack) || /cancel|downgrad/.test(normalized)) return "cancellation_downgrade";
+  if (/\b(support|talk|speak|chat|help|human|representative|agent|person)\b/.test(haystack) || /support|talk|help/.test(normalized)) {
+    return "purchase";
+  }
+  return ASSISTANCE_INTENT_IDS[0];
+}
+
