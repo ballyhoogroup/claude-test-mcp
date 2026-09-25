@@ -44,6 +44,16 @@ export function normalizeAssistanceArgs(args = {}) {
   return { intent, issueSummary };
 }
 
+/**
+ * Normalize connect/decline tool args to a single offer id.
+ * Accepts offerId or offer_id; ignores name, email, user id, and other extras.
+ */
+export function normalizeOfferArgs(args = {}) {
+  const raw = args.offerId ?? args.offer_id ?? args.offerID ?? "";
+  const offerId = typeof raw === "string" ? raw.trim() : String(raw ?? "").trim();
+  return { offerId };
+}
+
 function resolveAssistanceIntent(rawIntent, haystack) {
   const normalized = rawIntent.toLowerCase().replace(/[\s-]+/g, "_");
   if (intentById(normalized)) return normalized;

@@ -1,7 +1,24 @@
 import { z } from "zod";
-import { ASSISTANCE_INTENT_IDS, STANDARD_ASSISTANCE_INTENTS, intentById, normalizeAssistanceArgs } from "../intents.mjs";
+import {
+  ASSISTANCE_INTENT_IDS,
+  STANDARD_ASSISTANCE_INTENTS,
+  intentById,
+  normalizeAssistanceArgs,
+  normalizeOfferArgs
+} from "../intents.mjs";
 
-export { STANDARD_ASSISTANCE_INTENTS, ASSISTANCE_INTENT_IDS, normalizeAssistanceArgs } from "../intents.mjs";
+export {
+  STANDARD_ASSISTANCE_INTENTS,
+  ASSISTANCE_INTENT_IDS,
+  normalizeAssistanceArgs,
+  normalizeOfferArgs
+} from "../intents.mjs";
+
+/** Loose connect-tool schema: offerId or offer_id, extras ignored (ChatGPT hosts reject strict schemas). */
+const OFFER_CONNECT_INPUT = z.object({
+  offer_id: z.string().optional().describe("Offer id from the assistance card or invitation"),
+  offerId: z.string().optional().describe("Offer id (camelCase). Same as offer_id.")
+}).passthrough();
 
 export const CHAT_RESOURCE = "ui://supportbridge/chat";
 export const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
@@ -73,23 +90,23 @@ SupportBridge.install = function install(server, options) {
 
   server.registerTool("confirm_assistance", {
     title: "Confirm assistance",
-    description: "Contact support only after the customer accepts the assistance card. Pass only the offer id that offer_assistance returned. Do not pass a person's name or invent an offer id. The card calls this tool. Do not call it until the user accepts.",
-    inputSchema: { offer_id: z.string().describe("Offer id from the assistance card") },
+    description: "Contact support only after the customer accepts the assistance card. Pass the offer id that offer_assistance returned (offerId or offer_id). Do not invent an offer id. The card calls this tool. Do not call it until the user accepts. Extra fields such as name or email are ignored.",
+    inputSchema: OFFER_CONNECT_INPUT,
     _meta: chatMeta
-  }, async (args, extra) => acceptOffer(baseUrl, options.apiKey, await identityOf(identify, extra), args?.offer_id));
+  }, async (args, extra) => acceptOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
 
   server.registerTool("request_assistance", {
     title: "Request assistance",
-    description: "Accept a specific manual assistance offer after the customer explicitly agrees. Opens a conversation and the chat UI when the host supports MCP Apps.",
-    inputSchema: { offer_id: z.string().describe("Offer id from the invitation text") },
+    description: "Accept a specific assistance offer after the customer explicitly agrees (manual invitation or card). Pass offerId or offer_id. Opens a conversation and the chat UI when the host supports MCP Apps. Extra fields such as name or email are ignored.",
+    inputSchema: OFFER_CONNECT_INPUT,
     _meta: chatMeta
-  }, async (args, extra) => acceptOffer(baseUrl, options.apiKey, await identityOf(identify, extra), args?.offer_id));
+  }, async (args, extra) => acceptOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
 
   server.registerTool("decline_assistance", {
     title: "Decline assistance",
-    description: "Decline a specific assistance offer. Does not start a conversation or contact support.",
-    inputSchema: { offer_id: z.string().describe("Offer id from the invitation or assistance card") }
-  }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await identityOf(identify, extra), args?.offer_id));
+    description: "Decline a specific assistance offer. Pass offerId or offer_id. Does not start a conversation or contact support. Extra fields such as name or email are ignored.",
+    inputSchema: OFFER_CONNECT_INPUT
+  }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
   server.registerTool("support_get_messages", {
     title: "Get assistance messages",
     description: "Read assistance chat messages after a cursor.",
@@ -294,6 +311,16 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
 }
 
 async function acceptOffer(baseUrl, apiKey, identity, offerId) {
+  if (!offerId) {
+    return {
+      content: [{
+        type: "text",
+        text: "An offer id is required to accept assistance. Pass offerId or offer_id from the assistance card or invitation. No chat has started."
+      }],
+      structuredContent: { status: "offer_id_required", chatStarted: false },
+      isError: true
+    };
+  }
   const result = await serviceFetch(baseUrl, apiKey, `/v1/offers/${encodeURIComponent(offerId)}/accept`, {
     method: "POST",
     body: identity
@@ -327,6 +354,16 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
 }
 
 async function declineOffer(baseUrl, apiKey, identity, offerId) {
+  if (!offerId) {
+    return {
+      content: [{
+        type: "text",
+        text: "An offer id is required to decline assistance. Pass offerId or offer_id from the assistance card or invitation."
+      }],
+      structuredContent: { status: "offer_id_required", chatStarted: false },
+      isError: true
+    };
+  }
   const result = await serviceFetch(baseUrl, apiKey, `/v1/offers/${encodeURIComponent(offerId)}/decline`, {
     method: "POST",
     body: identity
