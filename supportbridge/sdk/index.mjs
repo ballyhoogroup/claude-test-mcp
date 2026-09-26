@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { sanitizeError, summarizeArguments } from "../activity.mjs";
+import {
+  cleanToolDescription,
+  cleanToolTitle,
+  safeArgumentTokens,
+  sanitizeError,
+  summarizeArguments
+} from "../activity.mjs";
 import {
   ASSISTANCE_INTENT_IDS,
   STANDARD_ASSISTANCE_INTENTS,
@@ -76,6 +82,22 @@ SupportBridge.install = function install(server, options) {
   const baseUrl = (options.baseUrl ?? "http://127.0.0.1:8787").replace(/\/$/, "");
   const identify = options.identify ?? (() => ({ userId: "anonymous", sessionId: "anonymous" }));
   const appHtml = options.appHtml ?? {};
+  const toolMetaByName = new Map();
+  if (typeof server.registerTool === "function") {
+    const registerTool = server.registerTool.bind(server);
+    server.registerTool = (name, config, handler) => {
+      const toolName = String(name ?? "");
+      if (toolName) {
+        const title = cleanToolTitle(config?.title);
+        const description = cleanToolDescription(config?.description);
+        toolMetaByName.set(toolName, {
+          ...(title ? { title } : {}),
+          ...(description ? { description } : {})
+        });
+      }
+      return registerTool(name, config, handler);
+    };
+  }
 
   const chatMeta = uiMeta(CHAT_RESOURCE);
   const intentOfferMeta = uiMeta(INTENT_OFFER_RESOURCE);
@@ -167,13 +189,18 @@ SupportBridge.install = function install(server, options) {
           throw cause;
         } finally {
           const identity = await identityOf(identify, extra);
+          const meta = toolMetaByName.get(String(toolName)) ?? {};
+          const tokens = safeArgumentTokens(args);
           await reportActivity(baseUrl, options.apiKey, {
             source: options.source ?? "mcp",
             ...identity,
             toolName,
             outcome,
             durationMs: Date.now() - started,
-            summary: summarizeArguments(args),
+            tokens,
+            summary: summarizeArguments(tokens),
+            ...(meta.title ? { title: meta.title } : {}),
+            ...(meta.description ? { description: meta.description } : {}),
             ...(errorText ? { error: errorText } : {})
           });
         }

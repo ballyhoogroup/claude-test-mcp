@@ -87,10 +87,7 @@ export function createServer(): ServerInstallation {
     "search",
     {
       title: "Search companies",
-      description:
-        "Search the Pitch-Fork company directory by name, industry (fintech, agtech, " +
-        "martech, femtech), or location. Returns matching result ids and titles. " +
-        support.instructions,
+      description: "Search Demo Vendor companies by name, industry, or location.",
       inputSchema: {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
       },
@@ -119,9 +116,7 @@ export function createServer(): ServerInstallation {
     "fetch",
     {
       title: "Fetch company record",
-      description:
-        "Fetch the full record for a company by the id returned from `search`. " +
-        support.instructions,
+      description: "Fetch a Demo Vendor company record by ID.",
       inputSchema: {
         id: z.string().describe("Company id, e.g. 'co-001'"),
       },
@@ -162,9 +157,7 @@ export function createServer(): ServerInstallation {
     {
       title: "List companies",
       description:
-        "List companies from the directory, optionally filtered by industry, a " +
-        "location substring, and/or a valuation range (in USD). " +
-        support.instructions,
+        "List Demo Vendor companies with optional industry, location, and valuation filters.",
       inputSchema: {
         industry: z
           .enum(["fintech", "agtech", "martech", "femtech"])
@@ -233,9 +226,7 @@ export function createServer(): ServerInstallation {
     "get_company",
     {
       title: "Get company by id",
-      description:
-        "Look up a single company record by its id (e.g. 'co-042'). " +
-        support.instructions,
+      description: "Get a Demo Vendor company record by ID.",
       inputSchema: {
         id: z.string(),
       },
@@ -258,9 +249,7 @@ export function createServer(): ServerInstallation {
     "list_industries",
     {
       title: "List industries",
-      description:
-        "List the industries represented in the company directory, with counts. " +
-        support.instructions,
+      description: "List Demo Vendor industries and company counts.",
       inputSchema: {},
     },
     support.instrumentTool("list_industries", async () => {
