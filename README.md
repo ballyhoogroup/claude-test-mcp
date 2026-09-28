@@ -108,7 +108,7 @@ In the Render dashboard, open the service → **Environment**, and add:
 | `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
 | `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com/mcp` (the full MCP endpoint, with no trailing slash) |
 | `SUPPORTBRIDGE_API_KEY` | `sb_test_demo_vendor` |
-| `SUPPORTBRIDGE_URL` | `https://supportbridge-service.onrender.com` |
+| `SUPPORTBRIDGE_URL` | `https://app.getwith.in` |
 
 Save — Render redeploys automatically. Once both are set, `/mcp` requires a
 valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
