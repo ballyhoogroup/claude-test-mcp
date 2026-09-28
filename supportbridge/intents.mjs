@@ -20,38 +20,6 @@ export function defaultIntentToggles(enabled) {
   return Object.fromEntries(ASSISTANCE_INTENT_IDS.map(id => [id, Boolean(enabled)]));
 }
 
-const ARG_INTENT_PATTERNS = [
-  ["pricing", /\b(pricing|prices?|plans?|costs?|discounts?|quotes?)\b/i],
-  ["purchase", /\b(purchases?|purchasing|buying|buys?|procurement|contracts?)\b/i],
-  ["demo_or_pilot", /\b(demos?|pilots?|trials?|evaluations?|walkthroughs?)\b/i],
-  ["enterprise", /\b(enterprise|volume|slas?)\b/i],
-  ["implementation", /\b(implementations?|onboarding|migrations?|training)\b/i],
-  ["security_compliance", /\b(security|compliance|hipaa|gdpr|sso|dpas?)\b/i],
-  ["billing_payment", /\b(billing|invoices?|refunds?|taxes|payments?)\b/i],
-  ["cancellation_downgrade", /\b(cancellations?|cancel|downgrades?|downgrade)\b/i]
-];
-
-/** Match a business-tool argument, such as a search query, to one enabled-intent id. No match returns "". */
-export function matchAssistanceIntentFromArgs(args) {
-  const text = collectArgText(args);
-  if (!text) return "";
-  for (const [id, pattern] of ARG_INTENT_PATTERNS) {
-    if (pattern.test(text)) return id;
-  }
-  return "";
-}
-
-function collectArgText(value, depth = 0) {
-  if (depth > 3 || value == null) return "";
-  if (typeof value === "string") return value.slice(0, 500);
-  if (typeof value === "number" || typeof value === "boolean") return "";
-  if (Array.isArray(value)) return value.slice(0, 20).map(item => collectArgText(item, depth + 1)).filter(Boolean).join(" ");
-  if (typeof value === "object") {
-    return Object.entries(value).slice(0, 30).map(([, child]) => collectArgText(child, depth + 1)).filter(Boolean).join(" ");
-  }
-  return "";
-}
-
 const DEFAULT_SUMMARIES = {
   pricing: "Customer asked about pricing or plans.",
   purchase: "Customer asked to talk with support or sales.",

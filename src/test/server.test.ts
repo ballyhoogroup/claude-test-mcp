@@ -42,7 +42,7 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
   }
 });
 
-test("attaches an offered assistance card to a successful matching business result", async () => {
+test("pricing text in a business tool does not create or append an assistance offer", async () => {
   const requests: Array<{ url: string; authorization: string | null }> = [];
   globalThis.fetch = async (input, init) => {
     const url = String(input);
@@ -50,6 +50,31 @@ test("attaches an offered assistance card to a successful matching business resu
       url,
       authorization: new Headers(init?.headers).get("authorization"),
     });
+    return Response.json({});
+  };
+
+  const { client, server } = await connectedClient();
+  try {
+    const result = await client.callTool({
+      name: "search",
+      arguments: { query: "what is the pricing of the alpha connector" },
+    });
+    assert.equal(result.isError, undefined);
+    assert.equal(result.structuredContent, undefined);
+    assert.equal(result._meta, undefined);
+    assert.doesNotMatch(JSON.stringify(result.content), /Optional live assistance|Show the assistance card/);
+    assert.ok(!requests.some(({ url }) => url.endsWith("/v1/offers/intent")));
+    assert.ok(requests.every(({ authorization }) => authorization === "Bearer sb_test_demo_vendor"));
+  } finally {
+    globalThis.fetch = async () => Response.json({});
+    await client.close();
+    await server.close();
+  }
+});
+
+test("offer_assistance remains the interactive path that returns the assistance card", async () => {
+  globalThis.fetch = async (input) => {
+    const url = String(input);
     if (url.endsWith("/v1/offers/intent")) {
       return Response.json({
         offer: {
@@ -70,19 +95,12 @@ test("attaches an offered assistance card to a successful matching business resu
   const { client, server } = await connectedClient();
   try {
     const result = await client.callTool({
-      name: "search",
-      arguments: { query: "What pricing plans do you offer?" },
+      name: "offer_assistance",
+      arguments: { intent: "pricing", issueSummary: "Customer asked about pricing." },
     });
     assert.equal(result.isError, undefined);
-    const structuredContent = result.structuredContent as
-      | { offered?: boolean; offerId?: string }
-      | undefined;
-    assert.equal(structuredContent?.offered, true);
-    assert.equal(structuredContent?.offerId, "offer-pricing-1");
     assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
     assert.match(JSON.stringify(result.content), /Optional live assistance/);
-    assert.ok(requests.some(({ url }) => url === "https://supportbridge-service.invalid/v1/offers/intent"));
-    assert.ok(requests.every(({ authorization }) => authorization === "Bearer sb_test_demo_vendor"));
   } finally {
     globalThis.fetch = async () => Response.json({});
     await client.close();

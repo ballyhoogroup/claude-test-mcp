@@ -10,7 +10,6 @@ import {
   ASSISTANCE_INTENT_IDS,
   STANDARD_ASSISTANCE_INTENTS,
   intentById,
-  matchAssistanceIntentFromArgs,
   normalizeAssistanceArgs,
   normalizeOfferArgs
 } from "../intents.mjs";
@@ -76,6 +75,44 @@ export function invitationText(offer) {
     `If the customer accepts, call request_assistance with offer id ${offer.id}.`,
     `If they decline, call decline_assistance with offer id ${offer.id}.`
   ].join(" ");
+}
+
+export function chatHeaderText(input = {}) {
+  const name = String(input.representativeName || "").trim();
+  const role = String(input.representativeRole || "").trim();
+  const vendor = String(input.vendorName || "").trim();
+  const title = name || "Live chat";
+  if (!name) return { title, subtitle: "Connecting…" };
+  if (input.ended) return { title, subtitle: "Conversation ended" };
+  const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : "";
+  if (roleLabel && vendor) return { title, subtitle: roleLabel + " at " + vendor };
+  if (roleLabel) return { title, subtitle: roleLabel };
+  if (vendor) return { title, subtitle: "Live assistance from " + vendor };
+  return { title, subtitle: "Live assistance" };
+}
+
+export function chatSystemLine(text, known = {}) {
+  const value = String(text ?? "").replace(
+    /^(.*? is connected)\. No messages were sent before you accepted\. You can end this chat at any time\.$/,
+    "$1."
+  );
+  const name = String(known.representativeName || "");
+  const vendor = String(known.vendorName || "");
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (name && new RegExp("^Connected to " + escapedName + "(?: from .+)?\\.$").test(value)) {
+    return name + " is connected.";
+  }
+  if (name && vendor && value === name + " from " + vendor + " is connected.") {
+    return name + " is connected.";
+  }
+  if (vendor) {
+    const suffix = " at " + vendor + " is connected.";
+    if (value.endsWith(suffix)) {
+      const person = value.slice(0, -suffix.length);
+      if (person && !person.includes(" at ")) return person + " is connected.";
+    }
+  }
+  return value;
 }
 
 export function SupportBridge() {}
@@ -215,11 +252,6 @@ SupportBridge.install = function install(server, options) {
         }
         if (result?.isError) return result;
         const identity = await identityOf(identify, extra);
-        const matchedIntent = matchAssistanceIntentFromArgs(args);
-        if (matchedIntent) {
-          const card = await createIntentOffer(baseUrl, options.apiKey, identity, normalizeAssistanceArgs({ intent: matchedIntent }));
-          if (card?.structuredContent?.offered) return attachIntentCard(result, card);
-        }
         const delivered = await deliverOffer(baseUrl, options.apiKey, identity);
         if (!delivered?.offer) return result;
         // Skip re-attach when deliver reports an already-presented offer (new servers).
@@ -235,21 +267,6 @@ export function attachInvitation(result, offer) {
   const content = Array.isArray(result?.content) ? [...result.content] : [];
   content.push({ type: "text", text: invitationText(offer) });
   return { ...result, content };
-}
-
-function attachIntentCard(result, card) {
-  const content = Array.isArray(result?.content) ? [...result.content] : [];
-  const offerText = card.content?.find(row => row?.type === "text" && row.text)?.text;
-  if (offerText) content.push({ type: "text", text: offerText });
-  return {
-    ...result,
-    content,
-    structuredContent: {
-      ...(result?.structuredContent && typeof result.structuredContent === "object" ? result.structuredContent : {}),
-      ...(card.structuredContent ?? {})
-    },
-    _meta: card._meta
-  };
 }
 
 function uiMeta(resourceUri) {
@@ -331,7 +348,9 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
         offered: false,
         chatStarted: true,
         conversationId: result.conversation.id,
-        representativeName: result.conversation.representativeName
+        representativeName: result.conversation.representativeName,
+        representativeRole: result.conversation.representativeRole,
+        vendorName: result.conversation.vendorName
       },
       _meta: uiMeta(CHAT_RESOURCE)
     };
@@ -415,6 +434,11 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
       isError: true
     };
   }
+  const transcript = await serviceFetch(
+    baseUrl,
+    apiKey,
+    `/v1/conversations/${encodeURIComponent(result.conversation.id)}/messages?after=0&customerSessionId=${encodeURIComponent(identity.customerSessionId)}`
+  );
   return {
     content: [{
       type: "text",
@@ -424,8 +448,10 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
       status: "accepted",
       chatStarted: true,
       conversationId: result.conversation.id,
-      representativeName: result.offer.representativeName,
-      messages: []
+      representativeName: result.offer.representativeName || result.conversation.representativeName,
+      representativeRole: result.offer.representativeRole || result.conversation.representativeRole,
+      vendorName: result.offer.vendorName || result.conversation.vendorName,
+      messages: Array.isArray(transcript?.messages) ? transcript.messages : []
     }
   };
 }
@@ -593,6 +619,12 @@ function chatPanelStyles() {
   box-shadow:0 0 0 3px rgba(47,125,79,.16);
 }
 .presence.ended{background:#9A9A91;box-shadow:none}
+.live-status{
+  display:inline-flex;align-items:center;gap:8px;flex:none;
+  color:#1E5836;font:600 12px/16px Inter,"Segoe UI",system-ui,sans-serif;
+}
+.live-status.waiting{display:none}
+.live-status.ended #live-label{display:none}
 .header-copy{min-width:0;flex:1}
 #title{
   margin:0;font:600 15px/20px Inter,"Segoe UI",system-ui,sans-serif;
@@ -667,7 +699,10 @@ function chatPanelStyles() {
 
 function chatMarkup() {
   return `<header id="header">
-  <span id="presence" class="presence" aria-hidden="true"></span>
+  <span class="live-status waiting" id="live-status">
+    <span id="presence" class="presence" aria-hidden="true"></span>
+    <span id="live-label"></span>
+  </span>
   <div class="header-copy">
     <h1 id="title">Live chat</h1>
     <p id="subtitle">Connecting…</p>
@@ -686,19 +721,23 @@ function chatMarkup() {
 }
 
 function chatClientScript() {
-  return `
+  return chatHeaderText.toString() + "\n" + chatSystemLine.toString() + "\n" + `
 let conversationId="";
 let cursor=0;
 let representativeName="";
+let representativeRole="";
+let vendorName="";
 let ended=false;
 let chatStarted=false;
 let pollTimer=null;
-let logEl,titleEl,subtitleEl,presenceEl,textEl,sendEl,endEl,shellEl;
+let logEl,titleEl,subtitleEl,presenceEl,liveStatusEl,liveLabelEl,textEl,sendEl,endEl,shellEl;
 function bindChatElements(){
   logEl=document.getElementById("log");
   titleEl=document.getElementById("title");
   subtitleEl=document.getElementById("subtitle");
   presenceEl=document.getElementById("presence");
+  liveStatusEl=document.getElementById("live-status");
+  liveLabelEl=document.getElementById("live-label");
   textEl=document.getElementById("text");
   sendEl=document.getElementById("send");
   endEl=document.getElementById("end");
@@ -717,9 +756,16 @@ function formatTime(value){
   return date.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
 }
 function setHeader(){
-  titleEl.textContent=representativeName||"Live chat";
-  subtitleEl.textContent=ended?"Conversation ended":(representativeName?"Live assistance":"Connecting…");
-  presenceEl.classList.toggle("ended",ended);
+  const header=chatHeaderText({representativeName:representativeName,representativeRole:representativeRole,vendorName:vendorName,ended:ended});
+  titleEl.textContent=header.title;
+  subtitleEl.textContent=header.subtitle;
+  const live=Boolean(representativeName)&&!ended;
+  if(liveStatusEl){
+    liveStatusEl.classList.toggle("waiting",!representativeName);
+    liveStatusEl.classList.toggle("ended",ended);
+  }
+  if(presenceEl) presenceEl.classList.toggle("ended",ended);
+  if(liveLabelEl) liveLabelEl.textContent=live?"Live":"";
 }
 function setComposerEnabled(enabled){
   textEl.disabled=!enabled;
@@ -746,7 +792,7 @@ function paint(messages){
       const line=document.createElement("div");
       line.className="system-line";
       const span=document.createElement("span");
-      span.textContent=escapeText(String(message.text||"").replace(/^(.*? is connected)\. No messages were sent before you accepted\. You can end this chat at any time\.$/,"$1."));
+      span.textContent=escapeText(chatSystemLine(message.text||"",{representativeName:representativeName,vendorName:vendorName}));
       line.append(span);
       row.append(line);
       logEl.append(row);
@@ -784,11 +830,19 @@ function paint(messages){
   }
   logEl.scrollTop=logEl.scrollHeight;
 }
+function rememberPerson(payload){
+  const conversation=payload.conversation||{};
+  const name=payload.representativeName||conversation.representativeName||"";
+  const role=payload.representativeRole||conversation.representativeRole||"";
+  const vendor=payload.vendorName||conversation.vendorName||"";
+  if(name)representativeName=name;
+  if(role)representativeRole=role;
+  if(vendor)vendorName=vendor;
+}
 function applyResult(data){
   const payload=data||{};
   conversationId=payload.conversationId||payload.conversation&&payload.conversation.id||conversationId;
-  if(payload.representativeName)representativeName=payload.representativeName;
-  if(payload.conversation&&payload.conversation.representativeName)representativeName=payload.conversation.representativeName;
+  rememberPerson(payload);
   const status=payload.status||payload.conversation&&payload.conversation.status||"";
   if(status==="ended"||payload.conversation&&payload.conversation.endedAt)ended=true;
   if(Array.isArray(payload.messages)){
