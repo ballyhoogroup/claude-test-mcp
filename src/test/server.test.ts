@@ -32,6 +32,7 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       "search",
       "support_end_session",
       "support_get_messages",
+      "support_get_offer",
       "support_send_message",
     ]);
   } finally {
