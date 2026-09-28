@@ -77,6 +77,43 @@ export function invitationText(offer) {
   ].join(" ");
 }
 
+/** Chat header copy. Serialized into the chat app, so it must stay self-contained. */
+export function chatHeaderText({ representativeName, representativeRole, vendorName, ended } = {}) {
+  const name = String(representativeName || "").trim();
+  const role = String(representativeRole || "").trim();
+  const vendor = String(vendorName || "").trim();
+  const title = name || "Live chat";
+  if (ended) return { title, subtitle: "Conversation ended" };
+  if (!name) return { title, subtitle: "Connecting…" };
+  const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : "";
+  if (roleLabel && vendor) return { title, subtitle: `${roleLabel} at ${vendor}` };
+  if (roleLabel) return { title, subtitle: roleLabel };
+  if (vendor) return { title, subtitle: `Live assistance from ${vendor}` };
+  return { title, subtitle: "Live assistance" };
+}
+
+/**
+ * Chat system line copy. Serialized into the chat app, so it must stay self-contained.
+ * Connect notices always render as "{Name} is connected." so stored or server text cannot add the company back.
+ */
+export function chatSystemLine(text, { representativeName, vendorName } = {}) {
+  const line = String(text || "").trim();
+  const connected = line.match(/^Connected to (.+?)(?:\.\s|\.?$)/i) || line.match(/^(.+?) is connected\b/i);
+  if (!connected) return line;
+  const name = String(representativeName || "").trim();
+  const vendor = String(vendorName || "").trim();
+  let subject = connected[1].trim();
+  if (name && subject.toLowerCase().startsWith(name.toLowerCase())) {
+    subject = name;
+  } else if (vendor) {
+    for (const joiner of [" from ", " at "]) {
+      const tail = (joiner + vendor).toLowerCase();
+      if (subject.toLowerCase().endsWith(tail)) subject = subject.slice(0, -tail.length).trim();
+    }
+  }
+  return subject ? subject + " is connected." : line;
+}
+
 export function SupportBridge() {}
 
 SupportBridge.install = function install(server, options) {
@@ -310,7 +347,9 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
         offered: false,
         chatStarted: true,
         conversationId: result.conversation.id,
-        representativeName: result.conversation.representativeName
+        representativeName: result.conversation.representativeName,
+        representativeRole: result.conversation.representativeRole,
+        vendorName: result.conversation.vendorName
       },
       _meta: uiMeta(CHAT_RESOURCE)
     };
@@ -404,6 +443,8 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
       chatStarted: true,
       conversationId: result.conversation.id,
       representativeName: result.offer.representativeName,
+      representativeRole: result.conversation.representativeRole ?? result.offer.representativeRole,
+      vendorName: result.conversation.vendorName ?? result.offer.vendorName,
       messages: []
     }
   };
@@ -454,6 +495,8 @@ async function readCustomerOffer(baseUrl, apiKey, identity, offerId) {
       chatStarted: Boolean(conversation?.id),
       conversationId: conversation?.id,
       representativeName: conversation?.representativeName || result?.offer?.representativeName,
+      representativeRole: conversation?.representativeRole || result?.offer?.representativeRole,
+      vendorName: conversation?.vendorName || result?.offer?.vendorName,
       conversation
     }
   };
@@ -501,6 +544,12 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
     structuredContent.chatStarted = true;
     if (!structuredContent.representativeName && result.conversation.representativeName) {
       structuredContent.representativeName = result.conversation.representativeName;
+    }
+    if (!structuredContent.representativeRole && result.conversation.representativeRole) {
+      structuredContent.representativeRole = result.conversation.representativeRole;
+    }
+    if (!structuredContent.vendorName && result.conversation.vendorName) {
+      structuredContent.vendorName = result.conversation.vendorName;
     }
     if (!structuredContent.status && result.conversation.status) {
       structuredContent.status = result.conversation.status;
@@ -669,6 +718,8 @@ function chatClientScript() {
 let conversationId="";
 let cursor=0;
 let representativeName="";
+let representativeRole="";
+let vendorName="";
 let ended=false;
 let chatStarted=false;
 let pollTimer=null;
@@ -695,9 +746,12 @@ function formatTime(value){
   if(Number.isNaN(date.getTime()))return "";
   return date.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
 }
+${chatHeaderText.toString()}
+${chatSystemLine.toString()}
 function setHeader(){
-  titleEl.textContent=representativeName||"Live chat";
-  subtitleEl.textContent=ended?"Conversation ended":(representativeName?"Live assistance":"Connecting…");
+  const header=chatHeaderText({representativeName,representativeRole,vendorName,ended});
+  titleEl.textContent=header.title;
+  subtitleEl.textContent=header.subtitle;
   presenceEl.classList.toggle("ended",ended);
 }
 function setComposerEnabled(enabled){
@@ -707,28 +761,35 @@ function setComposerEnabled(enabled){
   shellEl.classList.toggle("disabled",!enabled);
   textEl.placeholder=enabled?"Write a message":"Conversation ended";
 }
+function appendSystemLine(text){
+  const row=document.createElement("div");
+  row.className="message system";
+  const line=document.createElement("div");
+  line.className="system-line";
+  const span=document.createElement("span");
+  span.textContent=escapeText(chatSystemLine(text,{representativeName,vendorName}));
+  line.append(span);
+  row.append(line);
+  logEl.append(row);
+}
 function paint(messages){
   logEl.replaceChildren();
   const rows=Array.isArray(messages)?messages:[];
   if(!rows.length){
+    if(representativeName){
+      appendSystemLine(representativeName+" is connected.");
+      return;
+    }
     const empty=document.createElement("p");
     empty.className="chat-empty";
-    empty.textContent=representativeName?"You're connected. Send a message to begin.":"No messages yet.";
+    empty.textContent="No messages yet.";
     logEl.append(empty);
     return;
   }
   for(const message of rows){
     const sender=message.sender||"";
     if(sender==="system"){
-      const row=document.createElement("div");
-      row.className="message system";
-      const line=document.createElement("div");
-      line.className="system-line";
-      const span=document.createElement("span");
-      span.textContent=escapeText(String(message.text||"").replace(/^(.*? is connected)\. No messages were sent before you accepted\. You can end this chat at any time\.$/,"$1."));
-      line.append(span);
-      row.append(line);
-      logEl.append(row);
+      appendSystemLine(message.text);
       continue;
     }
     const isRep=sender==="representative";
@@ -767,7 +828,12 @@ function applyResult(data){
   const payload=data||{};
   conversationId=payload.conversationId||payload.conversation&&payload.conversation.id||conversationId;
   if(payload.representativeName)representativeName=payload.representativeName;
-  if(payload.conversation&&payload.conversation.representativeName)representativeName=payload.conversation.representativeName;
+  if(payload.representativeRole)representativeRole=payload.representativeRole;
+  if(payload.vendorName)vendorName=payload.vendorName;
+  const conversation=payload.conversation;
+  if(conversation&&conversation.representativeName)representativeName=conversation.representativeName;
+  if(conversation&&"representativeRole" in conversation)representativeRole=conversation.representativeRole||"";
+  if(conversation&&conversation.vendorName)vendorName=conversation.vendorName;
   const status=payload.status||payload.conversation&&payload.conversation.status||"";
   if(status==="ended"||payload.conversation&&payload.conversation.endedAt)ended=true;
   if(Array.isArray(payload.messages)){
