@@ -19,6 +19,7 @@ async function connectedClient() {
 test("exposes the business tools and SDK-managed assistance tools", async () => {
   const { client, server } = await connectedClient();
   try {
+    assert.match(client.getInstructions() ?? "", /offer_assistance/);
     const tools = await client.listTools();
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
       "confirm_assistance",
@@ -36,6 +37,54 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       "support_send_message",
     ]);
   } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("attaches an offered assistance card to a successful matching business result", async () => {
+  const requests: Array<{ url: string; authorization: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    requests.push({
+      url,
+      authorization: new Headers(init?.headers).get("authorization"),
+    });
+    if (url.endsWith("/v1/offers/intent")) {
+      return Response.json({
+        offer: {
+          id: "offer-pricing-1",
+          intent: "pricing",
+          intentLabel: "Pricing",
+          issueSummary: "Customer asked about pricing or plans.",
+          representativeName: "Sarah",
+          representativeRole: "account executive",
+          vendorName: "Pitch Fork",
+          expiresAt: "2026-09-28T21:00:00.000Z",
+        },
+      });
+    }
+    return Response.json({});
+  };
+
+  const { client, server } = await connectedClient();
+  try {
+    const result = await client.callTool({
+      name: "search",
+      arguments: { query: "What pricing plans do you offer?" },
+    });
+    assert.equal(result.isError, undefined);
+    const structuredContent = result.structuredContent as
+      | { offered?: boolean; offerId?: string }
+      | undefined;
+    assert.equal(structuredContent?.offered, true);
+    assert.equal(structuredContent?.offerId, "offer-pricing-1");
+    assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
+    assert.match(JSON.stringify(result.content), /Optional live assistance/);
+    assert.ok(requests.some(({ url }) => url === "https://supportbridge-service.invalid/v1/offers/intent"));
+    assert.ok(requests.every(({ authorization }) => authorization === "Bearer sb_test_demo_vendor"));
+  } finally {
+    globalThis.fetch = async () => Response.json({});
     await client.close();
     await server.close();
   }

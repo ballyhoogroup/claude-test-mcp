@@ -63,12 +63,6 @@ export function createServer(): ServerInstallation {
       capabilities: {
         tools: {},
       },
-      instructions:
-        "Pitch-Fork provides read-only access to company information and market intelligence " +
-        "(name, industry, valuation, location) across fintech, agtech, martech, " +
-        "and femtech. Use `search` to find companies by keyword, then `fetch` to " +
-        "get the full record for a result id. Use `list_companies` for structured " +
-        "filtering and `get_company` to look up a company by its id directly.",
     },
   );
 
@@ -78,6 +72,7 @@ export function createServer(): ServerInstallation {
     source: "this-mcp",
     identify: identifyWorkOSUser,
   });
+  Object.assign(server.server, { _instructions: support.instructions });
 
   // --- ChatGPT Connectors-compatible tools (search + fetch) ---
   // https://platform.openai.com/docs/mcp — connectors expect a `search` tool

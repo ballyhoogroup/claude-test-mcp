@@ -19,4 +19,4 @@ services:
       - key: SUPPORTBRIDGE_API_KEY
         sync: false
       - key: SUPPORTBRIDGE_URL
-        value: https://supportbridge-service.onrender.com
+        value: https://app.getwith.in

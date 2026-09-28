@@ -10,6 +10,7 @@ import {
   ASSISTANCE_INTENT_IDS,
   STANDARD_ASSISTANCE_INTENTS,
   intentById,
+  matchAssistanceIntentFromArgs,
   normalizeAssistanceArgs,
   normalizeOfferArgs
 } from "../intents.mjs";
@@ -75,43 +76,6 @@ export function invitationText(offer) {
     `If the customer accepts, call request_assistance with offer id ${offer.id}.`,
     `If they decline, call decline_assistance with offer id ${offer.id}.`
   ].join(" ");
-}
-
-/** Chat header copy. Serialized into the chat app, so it must stay self-contained. */
-export function chatHeaderText({ representativeName, representativeRole, vendorName, ended } = {}) {
-  const name = String(representativeName || "").trim();
-  const role = String(representativeRole || "").trim();
-  const vendor = String(vendorName || "").trim();
-  const title = name || "Live chat";
-  if (ended) return { title, subtitle: "Conversation ended" };
-  if (!name) return { title, subtitle: "Connecting…" };
-  const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : "";
-  if (roleLabel && vendor) return { title, subtitle: `${roleLabel} at ${vendor}` };
-  if (roleLabel) return { title, subtitle: roleLabel };
-  if (vendor) return { title, subtitle: `Live assistance from ${vendor}` };
-  return { title, subtitle: "Live assistance" };
-}
-
-/**
- * Chat system line copy. Serialized into the chat app, so it must stay self-contained.
- * Connect notices always render as "{Name} is connected." so stored or server text cannot add the company back.
- */
-export function chatSystemLine(text, { representativeName, vendorName } = {}) {
-  const line = String(text || "").trim();
-  const connected = line.match(/^Connected to (.+?)(?:\.\s|\.?$)/i) || line.match(/^(.+?) is connected\b/i);
-  if (!connected) return line;
-  const name = String(representativeName || "").trim();
-  const vendor = String(vendorName || "").trim();
-  let subject = connected[1].trim();
-  if (name && subject.toLowerCase().startsWith(name.toLowerCase())) {
-    subject = name;
-  } else if (vendor) {
-    for (const joiner of [" from ", " at "]) {
-      const tail = (joiner + vendor).toLowerCase();
-      if (subject.toLowerCase().endsWith(tail)) subject = subject.slice(0, -tail.length).trim();
-    }
-  }
-  return subject ? subject + " is connected." : line;
 }
 
 export function SupportBridge() {}
@@ -210,8 +174,8 @@ SupportBridge.install = function install(server, options) {
     _meta: appOnlyChatMeta
   }, async (args, extra) => readCustomerOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
 
-  registerResource(server, "SupportBridge chat", CHAT_RESOURCE, appHtml.chat ?? chatHtml());
-  registerResource(server, "SupportBridge assistance offer", INTENT_OFFER_RESOURCE, appHtml.intentOffer ?? intentOfferHtml());
+  registerResource(server, "Within chat", CHAT_RESOURCE, appHtml.chat ?? chatHtml());
+  registerResource(server, "Within assistance offer", INTENT_OFFER_RESOURCE, appHtml.intentOffer ?? intentOfferHtml());
 
   return {
     instructions: DISPLAY_INSTRUCTIONS,
@@ -251,6 +215,11 @@ SupportBridge.install = function install(server, options) {
         }
         if (result?.isError) return result;
         const identity = await identityOf(identify, extra);
+        const matchedIntent = matchAssistanceIntentFromArgs(args);
+        if (matchedIntent) {
+          const card = await createIntentOffer(baseUrl, options.apiKey, identity, normalizeAssistanceArgs({ intent: matchedIntent }));
+          if (card?.structuredContent?.offered) return attachIntentCard(result, card);
+        }
         const delivered = await deliverOffer(baseUrl, options.apiKey, identity);
         if (!delivered?.offer) return result;
         // Skip re-attach when deliver reports an already-presented offer (new servers).
@@ -266,6 +235,21 @@ export function attachInvitation(result, offer) {
   const content = Array.isArray(result?.content) ? [...result.content] : [];
   content.push({ type: "text", text: invitationText(offer) });
   return { ...result, content };
+}
+
+function attachIntentCard(result, card) {
+  const content = Array.isArray(result?.content) ? [...result.content] : [];
+  const offerText = card.content?.find(row => row?.type === "text" && row.text)?.text;
+  if (offerText) content.push({ type: "text", text: offerText });
+  return {
+    ...result,
+    content,
+    structuredContent: {
+      ...(result?.structuredContent && typeof result.structuredContent === "object" ? result.structuredContent : {}),
+      ...(card.structuredContent ?? {})
+    },
+    _meta: card._meta
+  };
 }
 
 function uiMeta(resourceUri) {
@@ -347,9 +331,7 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
         offered: false,
         chatStarted: true,
         conversationId: result.conversation.id,
-        representativeName: result.conversation.representativeName,
-        representativeRole: result.conversation.representativeRole,
-        vendorName: result.conversation.vendorName
+        representativeName: result.conversation.representativeName
       },
       _meta: uiMeta(CHAT_RESOURCE)
     };
@@ -443,8 +425,6 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
       chatStarted: true,
       conversationId: result.conversation.id,
       representativeName: result.offer.representativeName,
-      representativeRole: result.conversation.representativeRole ?? result.offer.representativeRole,
-      vendorName: result.conversation.vendorName ?? result.offer.vendorName,
       messages: []
     }
   };
@@ -495,8 +475,6 @@ async function readCustomerOffer(baseUrl, apiKey, identity, offerId) {
       chatStarted: Boolean(conversation?.id),
       conversationId: conversation?.id,
       representativeName: conversation?.representativeName || result?.offer?.representativeName,
-      representativeRole: conversation?.representativeRole || result?.offer?.representativeRole,
-      vendorName: conversation?.vendorName || result?.offer?.vendorName,
       conversation
     }
   };
@@ -544,12 +522,6 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
     structuredContent.chatStarted = true;
     if (!structuredContent.representativeName && result.conversation.representativeName) {
       structuredContent.representativeName = result.conversation.representativeName;
-    }
-    if (!structuredContent.representativeRole && result.conversation.representativeRole) {
-      structuredContent.representativeRole = result.conversation.representativeRole;
-    }
-    if (!structuredContent.vendorName && result.conversation.vendorName) {
-      structuredContent.vendorName = result.conversation.vendorName;
     }
     if (!structuredContent.status && result.conversation.status) {
       structuredContent.status = result.conversation.status;
@@ -718,8 +690,6 @@ function chatClientScript() {
 let conversationId="";
 let cursor=0;
 let representativeName="";
-let representativeRole="";
-let vendorName="";
 let ended=false;
 let chatStarted=false;
 let pollTimer=null;
@@ -746,12 +716,9 @@ function formatTime(value){
   if(Number.isNaN(date.getTime()))return "";
   return date.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
 }
-${chatHeaderText.toString()}
-${chatSystemLine.toString()}
 function setHeader(){
-  const header=chatHeaderText({representativeName,representativeRole,vendorName,ended});
-  titleEl.textContent=header.title;
-  subtitleEl.textContent=header.subtitle;
+  titleEl.textContent=representativeName||"Live chat";
+  subtitleEl.textContent=ended?"Conversation ended":(representativeName?"Live assistance":"Connecting…");
   presenceEl.classList.toggle("ended",ended);
 }
 function setComposerEnabled(enabled){
@@ -761,35 +728,28 @@ function setComposerEnabled(enabled){
   shellEl.classList.toggle("disabled",!enabled);
   textEl.placeholder=enabled?"Write a message":"Conversation ended";
 }
-function appendSystemLine(text){
-  const row=document.createElement("div");
-  row.className="message system";
-  const line=document.createElement("div");
-  line.className="system-line";
-  const span=document.createElement("span");
-  span.textContent=escapeText(chatSystemLine(text,{representativeName,vendorName}));
-  line.append(span);
-  row.append(line);
-  logEl.append(row);
-}
 function paint(messages){
   logEl.replaceChildren();
   const rows=Array.isArray(messages)?messages:[];
   if(!rows.length){
-    if(representativeName){
-      appendSystemLine(representativeName+" is connected.");
-      return;
-    }
     const empty=document.createElement("p");
     empty.className="chat-empty";
-    empty.textContent="No messages yet.";
+    empty.textContent=representativeName?"You're connected. Send a message to begin.":"No messages yet.";
     logEl.append(empty);
     return;
   }
   for(const message of rows){
     const sender=message.sender||"";
     if(sender==="system"){
-      appendSystemLine(message.text);
+      const row=document.createElement("div");
+      row.className="message system";
+      const line=document.createElement("div");
+      line.className="system-line";
+      const span=document.createElement("span");
+      span.textContent=escapeText(String(message.text||"").replace(/^(.*? is connected)\. No messages were sent before you accepted\. You can end this chat at any time\.$/,"$1."));
+      line.append(span);
+      row.append(line);
+      logEl.append(row);
       continue;
     }
     const isRep=sender==="representative";
@@ -828,12 +788,7 @@ function applyResult(data){
   const payload=data||{};
   conversationId=payload.conversationId||payload.conversation&&payload.conversation.id||conversationId;
   if(payload.representativeName)representativeName=payload.representativeName;
-  if(payload.representativeRole)representativeRole=payload.representativeRole;
-  if(payload.vendorName)vendorName=payload.vendorName;
-  const conversation=payload.conversation;
-  if(conversation&&conversation.representativeName)representativeName=conversation.representativeName;
-  if(conversation&&"representativeRole" in conversation)representativeRole=conversation.representativeRole||"";
-  if(conversation&&conversation.vendorName)vendorName=conversation.vendorName;
+  if(payload.conversation&&payload.conversation.representativeName)representativeName=payload.conversation.representativeName;
   const status=payload.status||payload.conversation&&payload.conversation.status||"";
   if(status==="ended"||payload.conversation&&payload.conversation.endedAt)ended=true;
   if(Array.isArray(payload.messages)){
@@ -890,7 +845,7 @@ function startChatSession(initial){
 
 /** Offer card for business intents. The chat resource starts already in the chat. */
 function supportAppHtml(startInChat = false) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SupportBridge assistance</title>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Within assistance</title>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;background:transparent}
