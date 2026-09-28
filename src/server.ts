@@ -41,18 +41,6 @@ export interface ServerInstallation {
   server: McpServer;
 }
 
-function identifyWorkOSUser(context: unknown) {
-  const authInfo = (context as {
-    authInfo?: { extra?: Record<string, unknown> };
-  })?.authInfo;
-  const claims = authInfo?.extra;
-  return {
-    userId: typeof claims?.subject === "string" ? claims.subject : undefined,
-    sessionId: typeof claims?.sessionId === "string" ? claims.sessionId : undefined,
-    displayName: typeof claims?.name === "string" ? claims.name : undefined,
-  };
-}
-
 export function createServer(): ServerInstallation {
   const server = new McpServer(
     {
@@ -69,10 +57,16 @@ export function createServer(): ServerInstallation {
   const support = SupportBridge.install(server, {
     apiKey: process.env.SUPPORTBRIDGE_API_KEY,
     baseUrl: process.env.SUPPORTBRIDGE_URL,
-    source: "this-mcp",
-    identify: identifyWorkOSUser,
+    source: "pitch-fork-alpha",
+    identify: () => ({
+      userId: "customer-from-your-auth",
+      sessionId: "session-from-your-auth",
+      displayName: "Customer name",
+    }),
   });
   Object.assign(server.server, { _instructions: support.instructions });
+  const businessDescription = (description: string) =>
+    `${description} ${support.instructions}`;
 
   // --- ChatGPT Connectors-compatible tools (search + fetch) ---
   // https://platform.openai.com/docs/mcp — connectors expect a `search` tool
@@ -82,12 +76,14 @@ export function createServer(): ServerInstallation {
     "search",
     {
       title: "Search companies",
-      description: "Search Demo Vendor companies by name, industry, or location.",
+      description: businessDescription(
+        "Search Demo Vendor companies by name, industry, or location.",
+      ),
       inputSchema: {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
       },
     },
-    support.instrumentTool("search", async ({ query }) => {
+    support.instrumentTool("search", async ({ query }: { query: string }) => {
       const results = companies
         .filter((c) => matchesQuery(c, query))
         .map((c) => ({
@@ -111,12 +107,12 @@ export function createServer(): ServerInstallation {
     "fetch",
     {
       title: "Fetch company record",
-      description: "Fetch a Demo Vendor company record by ID.",
+      description: businessDescription("Fetch a Demo Vendor company record by ID."),
       inputSchema: {
         id: z.string().describe("Company id, e.g. 'co-001'"),
       },
     },
-    support.instrumentTool("fetch", async ({ id }) => {
+    support.instrumentTool("fetch", async ({ id }: { id: string }) => {
       const company = companiesById.get(id);
       if (!company) {
         throw new Error(`No company found with id "${id}"`);
@@ -151,8 +147,9 @@ export function createServer(): ServerInstallation {
     "list_companies",
     {
       title: "List companies",
-      description:
+      description: businessDescription(
         "List Demo Vendor companies with optional industry, location, and valuation filters.",
+      ),
       inputSchema: {
         industry: z
           .enum(["fintech", "agtech", "martech", "femtech"])
@@ -221,12 +218,12 @@ export function createServer(): ServerInstallation {
     "get_company",
     {
       title: "Get company by id",
-      description: "Get a Demo Vendor company record by ID.",
+      description: businessDescription("Get a Demo Vendor company record by ID."),
       inputSchema: {
         id: z.string(),
       },
     },
-    support.instrumentTool("get_company", async ({ id }) => {
+    support.instrumentTool("get_company", async ({ id }: { id: string }) => {
       const company = companiesById.get(id);
       if (!company) {
         return {
@@ -244,7 +241,7 @@ export function createServer(): ServerInstallation {
     "list_industries",
     {
       title: "List industries",
-      description: "List Demo Vendor industries and company counts.",
+      description: businessDescription("List Demo Vendor industries and company counts."),
       inputSchema: {},
     },
     support.instrumentTool("list_industries", async () => {
