@@ -2,46 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer, identifyMcpUser } from "../server.js";
+import { createServer } from "../server.js";
 
 process.env.SUPPORTBRIDGE_API_KEY = "sb_test_demo_vendor";
 process.env.SUPPORTBRIDGE_URL = "https://supportbridge-service.invalid";
 globalThis.fetch = async () => Response.json({});
-
-test("identifies each MCP call from its host-provided user and session context", () => {
-  assert.deepEqual(
-    identifyMcpUser({
-      sessionId: "conversation-456",
-      authInfo: {
-        extra: {
-          subject: "chatgpt-user-123",
-          sessionId: "auth-session-fallback",
-          name: "Taylor Example",
-        },
-      },
-    }),
-    {
-      userId: "chatgpt-user-123",
-      sessionId: "conversation-456",
-      displayName: "Taylor Example",
-    },
-  );
-
-  assert.deepEqual(
-    identifyMcpUser({
-      authInfo: {
-        extra: {
-          userId: "chatgpt-user-789",
-          sessionId: "conversation-999",
-        },
-      },
-    }),
-    {
-      userId: "chatgpt-user-789",
-      sessionId: "conversation-999",
-    },
-  );
-});
 
 async function connectedClient() {
   const { server } = createServer();

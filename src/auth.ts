@@ -151,7 +151,7 @@ export async function verifyBearerToken(authorizationHeader: string | undefined)
         expiresAt: payload.exp,
         resource: new URL(resourceUrl!),
         extra: {
-          subject,
+          sub: subject,
           sessionId: stringClaim(payload.sid),
           organizationId: stringClaim(payload.org_id),
           name: profile.name,

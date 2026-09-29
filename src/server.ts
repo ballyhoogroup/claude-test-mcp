@@ -41,38 +41,6 @@ export interface ServerInstallation {
   server: McpServer;
 }
 
-export function identifyMcpUser(context: unknown) {
-  const requestContext = context as {
-    sessionId?: unknown;
-    authInfo?: { extra?: Record<string, unknown> };
-  };
-  const claims = requestContext?.authInfo?.extra;
-  const userId =
-    typeof claims?.subject === "string"
-      ? claims.subject
-      : typeof claims?.userId === "string"
-        ? claims.userId
-        : undefined;
-  const sessionId =
-    typeof requestContext?.sessionId === "string"
-      ? requestContext.sessionId
-      : typeof claims?.sessionId === "string"
-        ? claims.sessionId
-        : undefined;
-  const displayName =
-    typeof claims?.name === "string"
-      ? claims.name
-      : typeof claims?.displayName === "string"
-        ? claims.displayName
-        : undefined;
-
-  return {
-    userId,
-    sessionId,
-    ...(displayName ? { displayName } : {}),
-  };
-}
-
 export function createServer(): ServerInstallation {
   const server = new McpServer(
     {
@@ -90,7 +58,6 @@ export function createServer(): ServerInstallation {
     apiKey: process.env.SUPPORTBRIDGE_API_KEY,
     baseUrl: process.env.SUPPORTBRIDGE_URL,
     source: "pitch-fork-alpha",
-    identify: identifyMcpUser,
   });
   Object.assign(server.server, { _instructions: support.instructions });
   const businessDescription = (description: string) =>

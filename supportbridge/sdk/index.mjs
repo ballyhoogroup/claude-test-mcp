@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  argumentPreview,
   cleanToolDescription,
   cleanToolTitle,
   safeArgumentTokens,
@@ -82,7 +83,7 @@ export function SupportBridge() {}
 SupportBridge.install = function install(server, options) {
   if (!options?.apiKey) throw new Error("api_key_required");
   const baseUrl = (options.baseUrl ?? "http://127.0.0.1:8787").replace(/\/$/, "");
-  const identify = options.identify ?? (() => ({ userId: "anonymous", sessionId: "anonymous" }));
+  const identify = options.identify ?? identifyFromContext;
   const appHtml = options.appHtml ?? {};
   const toolMetaByName = new Map();
   if (typeof server.registerTool === "function") {
@@ -199,6 +200,7 @@ SupportBridge.install = function install(server, options) {
           const identity = await identityOf(identify, extra);
           const meta = toolMetaByName.get(String(toolName)) ?? {};
           const tokens = safeArgumentTokens(args);
+          const preview = argumentPreview(args);
           await reportActivity(baseUrl, options.apiKey, {
             source: options.source ?? "mcp",
             ...identity,
@@ -207,6 +209,7 @@ SupportBridge.install = function install(server, options) {
             durationMs: Date.now() - started,
             tokens,
             summary: summarizeArguments(tokens),
+            ...(preview ? { argumentPreview: preview } : {}),
             ...(meta.title ? { title: meta.title } : {}),
             ...(meta.description ? { description: meta.description } : {}),
             ...(errorText ? { error: errorText } : {})
@@ -214,6 +217,8 @@ SupportBridge.install = function install(server, options) {
         }
         if (result?.isError) return result;
         const identity = await identityOf(identify, extra);
+        // Business-intent cards come only from offer_assistance. Do not scan
+        // tool arguments here or attach an intent card onto a business result.
         const delivered = await deliverOffer(baseUrl, options.apiKey, identity);
         if (!delivered?.offer) return result;
         // Skip re-attach when deliver reports an already-presented offer (new servers).
@@ -275,12 +280,43 @@ function resourceMeta(resourceUri) {
   };
 }
 
-async function identityOf(identify, context) {
-  const identity = await identify(context ?? {}) ?? {};
+const PLACEHOLDER_IDS = new Set(["anonymous", "customer-from-your-auth", "session-from-your-auth"]);
+const PLACEHOLDER_NAMES = new Set(["customer name"]);
+
+/** Read the signed-in person from an MCP tool context. A missing name stays unset. */
+export function identifyFromContext(context) {
+  const extra = context && typeof context === "object" ? context : {};
+  const authExtra = extra.authInfo?.extra && typeof extra.authInfo.extra === "object" ? extra.authInfo.extra : {};
+  const meta = extra._meta && typeof extra._meta === "object" ? extra._meta : {};
+  const metaUser = meta["openai/user"] && typeof meta["openai/user"] === "object" ? meta["openai/user"] : {};
   return {
-    customerUserId: String(identity.userId ?? identity.customerUserId ?? "anonymous"),
-    customerSessionId: String(identity.sessionId ?? identity.customerSessionId ?? "anonymous"),
-    displayName: identity.displayName
+    userId: firstText([authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]),
+    sessionId: firstText([extra.sessionId, authExtra.session_id, authExtra.sessionId, authExtra.sid, meta.sessionId]),
+    displayName: firstText([authExtra.name, authExtra.preferred_username, metaUser.name])
+  };
+}
+
+function firstText(values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function usableIdentity(value, placeholders) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || placeholders.has(text.toLowerCase())) return "";
+  return text;
+}
+
+async function identityOf(identify, context) {
+  const provided = await identify(context ?? {}) ?? {};
+  const fromContext = identify === identifyFromContext ? {} : identifyFromContext(context);
+  const displayName = usableIdentity(provided.displayName, PLACEHOLDER_NAMES) || fromContext.displayName;
+  return {
+    customerUserId: usableIdentity(provided.userId ?? provided.customerUserId, PLACEHOLDER_IDS) || fromContext.userId || "anonymous",
+    customerSessionId: usableIdentity(provided.sessionId ?? provided.customerSessionId, PLACEHOLDER_IDS) || fromContext.sessionId || "anonymous",
+    ...(displayName ? { displayName } : {})
   };
 }
 
