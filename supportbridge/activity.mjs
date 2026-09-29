@@ -6,11 +6,6 @@ const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const SECRET_VALUE = /\b(?:sk-[A-Za-z0-9_-]{8,}|sb_[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~+/-]+=*)\b/gi;
 const CARD = /\b(?:\d[ -]*?){13,19}\b/g;
 const SHORT_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$/;
-const PREVIEW_KEYS = new Set(["query", "q", "search", "prompt", "text", "message", "content", "input"]);
-const PHONE = /(?:^|\D)\+?\d[\d\s().-]{7,}\d(?:\D|$)/;
-const ADDRESS = /\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,4}\s+(?:street|st|road|rd|avenue|ave|boulevard|blvd|lane|ln|drive|dr|court|ct|way|parkway|pkwy)\b/i;
-const PERSON_NAME = /\b(?:my name is|i am|i'm|customer|user|contact)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/;
-const PRIVATE_TEXT = /\b(?:password|passwd|api[ _-]?key|access[ _-]?token|refresh[ _-]?token|bearer)\b|\b(?:eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|(?:sk|sb|pk)_[A-Za-z0-9_-]{6,})\b/i;
 
 export function redact(value, depth = 0) {
   if (depth > 2) return "[truncated]";
@@ -69,26 +64,24 @@ export function safeArgumentTokens(args) {
   return tokens;
 }
 
-/** A short, non-sensitive search/question preview for transient activity delivery only. */
+const PREVIEW_SKIP = /^(name|fullname|address|notes?|comment|description)$/i;
+const ARGUMENT_TEXT_KEY = /^(query|q|prompt|text|message|content|input|search)$/i;
+
+/** Short redacted search text for a one-time alert. Not stored on the session. */
 export function argumentPreview(args) {
-  if (args == null || typeof args !== "object" || Array.isArray(args)) return "";
+  if (!args || typeof args !== "object" || Array.isArray(args)) return "";
+  const redacted = redact(args);
+  if (!redacted || typeof redacted !== "object" || Array.isArray(redacted)) return "";
   const parts = [];
-  for (const [key, value] of Object.entries(args)) {
-    if (!PREVIEW_KEYS.has(key.toLowerCase()) || typeof value !== "string") continue;
-    const text = value.replace(/\s+/g, " ").trim();
-    if (!text) continue;
-    EMAIL.lastIndex = 0;
-    SECRET_VALUE.lastIndex = 0;
-    const unsafe = EMAIL.test(text)
-      || PHONE.test(text)
-      || ADDRESS.test(text)
-      || PERSON_NAME.test(text)
-      || PRIVATE_TEXT.test(text)
-      || SECRET_VALUE.test(text);
-    EMAIL.lastIndex = 0;
-    SECRET_VALUE.lastIndex = 0;
-    if (unsafe) continue;
+  for (const [key, value] of Object.entries(redacted)) {
+    if (SECRET_KEY.test(key) || PREVIEW_SKIP.test(key)) continue;
+    if (typeof value !== "string") continue;
+    const text = value.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!text || text === "[redacted]" || text === "[truncated]") continue;
+    const searchable = ARGUMENT_TEXT_KEY.test(key);
+    if (!searchable && (isSafeTokenValue(text) || !/\s/.test(text))) continue;
     parts.push(text);
+    if (parts.join(" · ").length >= 140) break;
   }
   return parts.join(" · ").slice(0, 160);
 }

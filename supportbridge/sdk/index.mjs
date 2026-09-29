@@ -1,8 +1,8 @@
 import { z } from "zod";
 import {
-  argumentPreview,
   cleanToolDescription,
   cleanToolTitle,
+  argumentPreview,
   safeArgumentTokens,
   sanitizeError,
   summarizeArguments
@@ -201,21 +201,19 @@ SupportBridge.install = function install(server, options) {
           const meta = toolMetaByName.get(String(toolName)) ?? {};
           const tokens = safeArgumentTokens(args);
           const preview = argumentPreview(args);
-          if (hasStableActivityIdentity(identity)) {
-            await reportActivity(baseUrl, options.apiKey, {
-              source: options.source ?? "mcp",
-              ...identity,
-              toolName,
-              outcome,
-              durationMs: Date.now() - started,
-              tokens,
-              summary: summarizeArguments(tokens),
-              ...(preview ? { argumentPreview: preview } : {}),
-              ...(meta.title ? { title: meta.title } : {}),
-              ...(meta.description ? { description: meta.description } : {}),
-              ...(errorText ? { error: errorText } : {})
-            });
-          }
+          await reportActivity(baseUrl, options.apiKey, {
+            source: options.source ?? "mcp",
+            ...identity,
+            toolName,
+            outcome,
+            durationMs: Date.now() - started,
+            tokens,
+            summary: summarizeArguments(tokens),
+            ...(preview ? { argumentPreview: preview } : {}),
+            ...(meta.title ? { title: meta.title } : {}),
+            ...(meta.description ? { description: meta.description } : {}),
+            ...(errorText ? { error: errorText } : {})
+          });
         }
         if (result?.isError) return result;
         const identity = await identityOf(identify, extra);
@@ -293,7 +291,7 @@ export function identifyFromContext(context) {
   const metaUser = meta["openai/user"] && typeof meta["openai/user"] === "object" ? meta["openai/user"] : {};
   return {
     userId: firstText([authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]),
-    sessionId: firstText([extra.sessionId, authExtra.session_id, authExtra.sessionId, authExtra.sid, meta.sessionId]),
+    sessionId: firstText([extra.sessionId, meta.sessionId]),
     displayName: firstText([authExtra.name, authExtra.preferred_username, metaUser.name])
   };
 }
@@ -320,13 +318,6 @@ async function identityOf(identify, context) {
     customerSessionId: usableIdentity(provided.sessionId ?? provided.customerSessionId, PLACEHOLDER_IDS) || fromContext.sessionId || "anonymous",
     ...(displayName ? { displayName } : {})
   };
-}
-
-function hasStableActivityIdentity(identity) {
-  return Boolean(
-    usableIdentity(identity?.customerUserId, PLACEHOLDER_IDS)
-    && usableIdentity(identity?.customerSessionId, PLACEHOLDER_IDS)
-  );
 }
 
 async function reportActivity(baseUrl, apiKey, body) {
@@ -449,6 +440,8 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId) {
       chatStarted: true,
       conversationId: result.conversation.id,
       representativeName: result.offer.representativeName,
+      representativeRole: result.offer.representativeRole || result.conversation.representativeRole,
+      vendorName: result.offer.vendorName || result.conversation.vendorName,
       messages: []
     }
   };
@@ -547,6 +540,12 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
     if (!structuredContent.representativeName && result.conversation.representativeName) {
       structuredContent.representativeName = result.conversation.representativeName;
     }
+    if (!structuredContent.representativeRole && result.conversation.representativeRole) {
+      structuredContent.representativeRole = result.conversation.representativeRole;
+    }
+    if (!structuredContent.vendorName && result.conversation.vendorName) {
+      structuredContent.vendorName = result.conversation.vendorName;
+    }
     if (!structuredContent.status && result.conversation.status) {
       structuredContent.status = result.conversation.status;
     }
@@ -622,7 +621,10 @@ function chatPanelStyles() {
   margin:0;font:600 15px/20px Inter,"Segoe UI",system-ui,sans-serif;
   letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-#subtitle{margin:2px 0 0;color:#6B6B62;font:400 12px/16px Inter,"Segoe UI",system-ui,sans-serif}
+#subtitle{
+  margin:2px 0 0;color:#6B6B62;font:400 12px/16px Inter,"Segoe UI",system-ui,sans-serif;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
 #end{
   flex:none;margin:0;padding:6px 8px;border:0;background:transparent;
   color:#6B6B62;font:500 13px/18px Inter,"Segoe UI",system-ui,sans-serif;cursor:pointer;
@@ -714,6 +716,8 @@ function chatClientScript() {
 let conversationId="";
 let cursor=0;
 let representativeName="";
+let representativeRole="";
+let vendorName="";
 let ended=false;
 let chatStarted=false;
 let pollTimer=null;
@@ -740,9 +744,26 @@ function formatTime(value){
   if(Number.isNaN(date.getTime()))return "";
   return date.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
 }
+function headerSubtitle(){
+  if(ended)return "Conversation ended";
+  if(!representativeName)return "Connecting…";
+  const role=String(representativeRole||"").trim();
+  const company=String(vendorName||"").trim();
+  const roleLabel=role?role.charAt(0).toUpperCase()+role.slice(1):"";
+  if(roleLabel&&company)return roleLabel+" | "+company;
+  if(roleLabel)return roleLabel;
+  if(company)return company;
+  return "Live assistance";
+}
+function rememberPerson(source){
+  if(!source)return;
+  if(source.representativeName)representativeName=source.representativeName;
+  if(source.representativeRole)representativeRole=source.representativeRole;
+  if(source.vendorName)vendorName=source.vendorName;
+}
 function setHeader(){
   titleEl.textContent=representativeName||"Live chat";
-  subtitleEl.textContent=ended?"Conversation ended":(representativeName?"Live assistance":"Connecting…");
+  subtitleEl.textContent=headerSubtitle();
   presenceEl.classList.toggle("ended",ended);
 }
 function setComposerEnabled(enabled){
@@ -811,8 +832,8 @@ function paint(messages){
 function applyResult(data){
   const payload=data||{};
   conversationId=payload.conversationId||payload.conversation&&payload.conversation.id||conversationId;
-  if(payload.representativeName)representativeName=payload.representativeName;
-  if(payload.conversation&&payload.conversation.representativeName)representativeName=payload.conversation.representativeName;
+  rememberPerson(payload);
+  rememberPerson(payload.conversation);
   const status=payload.status||payload.conversation&&payload.conversation.status||"";
   if(status==="ended"||payload.conversation&&payload.conversation.endedAt)ended=true;
   if(Array.isArray(payload.messages)){
