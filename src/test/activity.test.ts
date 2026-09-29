@@ -83,3 +83,39 @@ test("current SDK reads supported host identity aliases and omits missing names"
     { userId: "user-42", sessionId: "session-42", displayName: "" },
   );
 });
+
+test("current SDK never posts anonymous activity", async () => {
+  const handlers = new Map<string, (args: unknown, extra: unknown) => Promise<unknown>>();
+  const server = {
+    registerTool(name: string, _config: unknown, handler: (args: unknown, extra: unknown) => Promise<unknown>) {
+      handlers.set(name, handler);
+    },
+    registerResource() {},
+  };
+  const urls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    urls.push(String(input));
+    return Response.json({});
+  };
+
+  try {
+    const support = SupportBridge.install(server, {
+      apiKey: "sb_test_demo_vendor",
+      baseUrl: "https://supportbridge-service.invalid",
+      source: "pitch-fork-alpha",
+    });
+    server.registerTool(
+      "list_companies",
+      { title: "List companies", description: "List companies" },
+      support.instrumentTool("list_companies", async () => ({
+        content: [{ type: "text", text: "unchanged" }],
+      })),
+    );
+
+    await handlers.get("list_companies")?.({ query: "fintech companies" }, {});
+    assert.ok(!urls.some((url) => url.endsWith("/v1/activity")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

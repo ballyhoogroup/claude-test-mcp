@@ -201,19 +201,21 @@ SupportBridge.install = function install(server, options) {
           const meta = toolMetaByName.get(String(toolName)) ?? {};
           const tokens = safeArgumentTokens(args);
           const preview = argumentPreview(args);
-          await reportActivity(baseUrl, options.apiKey, {
-            source: options.source ?? "mcp",
-            ...identity,
-            toolName,
-            outcome,
-            durationMs: Date.now() - started,
-            tokens,
-            summary: summarizeArguments(tokens),
-            ...(preview ? { argumentPreview: preview } : {}),
-            ...(meta.title ? { title: meta.title } : {}),
-            ...(meta.description ? { description: meta.description } : {}),
-            ...(errorText ? { error: errorText } : {})
-          });
+          if (hasStableActivityIdentity(identity)) {
+            await reportActivity(baseUrl, options.apiKey, {
+              source: options.source ?? "mcp",
+              ...identity,
+              toolName,
+              outcome,
+              durationMs: Date.now() - started,
+              tokens,
+              summary: summarizeArguments(tokens),
+              ...(preview ? { argumentPreview: preview } : {}),
+              ...(meta.title ? { title: meta.title } : {}),
+              ...(meta.description ? { description: meta.description } : {}),
+              ...(errorText ? { error: errorText } : {})
+            });
+          }
         }
         if (result?.isError) return result;
         const identity = await identityOf(identify, extra);
@@ -318,6 +320,13 @@ async function identityOf(identify, context) {
     customerSessionId: usableIdentity(provided.sessionId ?? provided.customerSessionId, PLACEHOLDER_IDS) || fromContext.sessionId || "anonymous",
     ...(displayName ? { displayName } : {})
   };
+}
+
+function hasStableActivityIdentity(identity) {
+  return Boolean(
+    usableIdentity(identity?.customerUserId, PLACEHOLDER_IDS)
+    && usableIdentity(identity?.customerSessionId, PLACEHOLDER_IDS)
+  );
 }
 
 async function reportActivity(baseUrl, apiKey, body) {
