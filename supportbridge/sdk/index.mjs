@@ -482,7 +482,7 @@ async function readCustomerOffer(baseUrl, apiKey, identity, offerId) {
   const result = await serviceFetch(
     baseUrl,
     apiKey,
-    `/v1/offers/${encodeURIComponent(offerId)}?customerSessionId=${encodeURIComponent(identity.customerSessionId)}`
+    `/v1/offers/${encodeURIComponent(offerId)}?customerSessionId=${encodeURIComponent(identity.customerSessionId)}&customerUserId=${encodeURIComponent(identity.customerUserId)}`
   );
   const conversation = result?.conversation;
   return {
@@ -529,7 +529,7 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
   const result = await serviceFetch(
     baseUrl,
     apiKey,
-    `/v1/conversations/${encodeURIComponent(args.conversation_id)}/messages?after=${after}&customerSessionId=${encodeURIComponent(identity.customerSessionId)}`
+    `/v1/conversations/${encodeURIComponent(args.conversation_id)}/messages?after=${after}&customerSessionId=${encodeURIComponent(identity.customerSessionId)}&customerUserId=${encodeURIComponent(identity.customerUserId)}`
   );
   const structuredContent = {
     ...(result ?? { status: "unavailable" }),
