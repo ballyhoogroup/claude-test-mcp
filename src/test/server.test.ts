@@ -20,11 +20,14 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
   const { client, server } = await connectedClient();
   try {
     assert.match(client.getInstructions() ?? "", /offer_assistance/);
+    assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     const tools = await client.listTools();
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
       "confirm_assistance",
       "decline_assistance",
+      "decline_escalation",
       "fetch",
+      "file_escalation",
       "get_company",
       "list_companies",
       "list_industries",
@@ -100,7 +103,7 @@ test("offer_assistance remains the interactive path that returns the assistance 
     });
     assert.equal(result.isError, undefined);
     assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
-    assert.match(JSON.stringify(result.content), /Optional live assistance/);
+    assert.match(JSON.stringify(result.content), /Sarah can help with pricing now/);
   } finally {
     globalThis.fetch = async () => Response.json({});
     await client.close();
@@ -117,6 +120,26 @@ test("business tools keep their schemas and results", async () => {
     const industries = await client.callTool({ name: "list_industries", arguments: {} });
     assert.equal(industries.isError, undefined);
     assert.match(JSON.stringify(industries.content), /fintech/);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("business tool descriptions stay business-only", async () => {
+  const { client, server } = await connectedClient();
+  try {
+    const tools = await client.listTools();
+    const expected = new Map([
+      ["search", "Search Demo Vendor companies by name, industry, or location."],
+      ["fetch", "Fetch a Demo Vendor company record by ID."],
+      ["list_companies", "List Demo Vendor companies with optional industry, location, and valuation filters."],
+      ["get_company", "Get a Demo Vendor company record by ID."],
+      ["list_industries", "List Demo Vendor industries and company counts."],
+    ]);
+    for (const [name, description] of expected) {
+      assert.equal(tools.tools.find((tool) => tool.name === name)?.description, description);
+    }
   } finally {
     await client.close();
     await server.close();

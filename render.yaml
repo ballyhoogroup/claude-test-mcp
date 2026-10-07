@@ -20,3 +20,5 @@ services:
         sync: false
       - key: SUPPORTBRIDGE_URL
         value: https://app.getwith.in
+      - key: SUPPORTBRIDGE_SOURCE
+        value: pitch-fork-alpha

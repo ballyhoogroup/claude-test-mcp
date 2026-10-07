@@ -1,4 +1,6 @@
-/** Shared MCP activity redaction, safe argument tokens, and descriptor lead lines. */
+/** Shared MCP activity redaction, safe argument tokens, and customer-job lead lines. */
+
+import { STANDARD_ASSISTANCE_INTENTS, intentById } from "./intents.mjs";
 
 const SECRET_KEY = /secret|password|token|api[-_]?key|authorization|cookie|email|phone|ssn|card|cvv|cvc|pan/i;
 const FREE_TEXT_KEY = /^(query|q|prompt|text|message|content|body|issuesummary|issue_summary|search|input|notes?|comment|description|name|fullname|address|subject)$/i;
@@ -67,7 +69,7 @@ export function safeArgumentTokens(args) {
 const PREVIEW_SKIP = /^(name|fullname|address|notes?|comment|description)$/i;
 const ARGUMENT_TEXT_KEY = /^(query|q|prompt|text|message|content|input|search)$/i;
 
-/** Short redacted search text for a one-time alert. Not stored on the session. */
+/** Short redacted query gist. Safe to store on an activity event; not a raw argument dump. */
 export function argumentPreview(args) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return "";
   const redacted = redact(args);
@@ -95,6 +97,13 @@ export function summarizeArguments(args) {
     if (parts.join(", ").length >= 140) break;
   }
   return parts.join(", ").slice(0, 160);
+}
+
+/** Short redacted text of what the tool sent back. Safe to store on an activity event. */
+export function resultText(result) {
+  const part = Array.isArray(result?.content) ? result.content.find(row => row?.type === "text" && row.text) : null;
+  if (!part) return "";
+  return sanitizeError(part.text);
 }
 
 export function sanitizeError(message) {
@@ -136,7 +145,7 @@ export function activityFingerprint(row) {
     ? row.tokens
     : {};
   const parts = Object.keys(tokens).sort().map(key => `${key}=${String(tokens[key])}`);
-  return `${toolName}|${parts.join("&")}`;
+  return `${toolName}|${parts.join("&")}|${eventGist(row)}`;
 }
 
 function errorClass(row) {
@@ -169,20 +178,6 @@ export function humanizedActivityLine(row) {
   return "";
 }
 
-function joinDescriptors(phrases) {
-  if (!phrases.length) return "No recent tool activity.";
-  if (phrases.length === 1) return `${phrases[0]}.`;
-  if (phrases.length === 2) {
-    const second = phrases[1];
-    const lowered = second.charAt(0).toLowerCase() + second.slice(1);
-    return `${phrases[0]}, then ${lowered}.`;
-  }
-  const head = phrases.slice(0, -1).join(", ");
-  const last = phrases[phrases.length - 1];
-  const lowered = last.charAt(0).toLowerCase() + last.slice(1);
-  return `${head}, then ${lowered}.`;
-}
-
 /** Collapse consecutive same tool + safe-token fingerprint into beats with count. */
 export function collapseActivityBeats(activity) {
   const rows = Array.isArray(activity) ? activity.filter(Boolean) : [];
@@ -196,6 +191,10 @@ export function collapseActivityBeats(activity) {
       last.outcome = row.outcome ?? last.outcome;
       last.durationMs = row.durationMs ?? last.durationMs;
       if (row.error) last.error = row.error;
+      if (row.result) last.result = row.result;
+      const gist = eventGist(row);
+      if (gist && last.gist && last.gist !== gist) last.gistMixed = true;
+      else if (gist && !last.gistMixed) last.gist = gist;
       continue;
     }
     beats.push({
@@ -208,6 +207,9 @@ export function collapseActivityBeats(activity) {
       tokens: row.tokens && typeof row.tokens === "object" ? { ...row.tokens } : {},
       summary: row.summary ?? "",
       error: row.error,
+      result: row.result || undefined,
+      gist: eventGist(row),
+      gistMixed: false,
       count: 1,
       fingerprint
     });
@@ -215,13 +217,273 @@ export function collapseActivityBeats(activity) {
   return beats;
 }
 
-/** Deterministic one-line lead from descriptors (not snake_case tool names). */
-export function activityIntentSentence(activity) {
-  const beats = collapseActivityBeats(activity);
-  if (!beats.length) return "No recent tool activity.";
-  const recent = beats.slice(-6);
-  const phrases = recent.map(beat => humanizedActivityLine(beat) || activityDescriptor(beat));
-  return joinDescriptors(phrases);
+function eventGist(row) {
+  return argumentPreview({ query: row?.gist });
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Intent named by an id or by a gist hitting the assistance word lists. Descriptions are ignored. */
+export function intentFromText(value) {
+  const text = String(value ?? "");
+  if (!text.trim()) return null;
+  let best = null;
+  let bestAt = Infinity;
+  for (const intent of STANDARD_ASSISTANCE_INTENTS) {
+    for (const word of intent.words ?? []) {
+      const pattern = new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(word)}(?:[^A-Za-z0-9]|$)`, "i");
+      const match = pattern.exec(text);
+      if (match && match.index < bestAt) {
+        bestAt = match.index;
+        best = intent;
+      }
+    }
+  }
+  return best;
+}
+
+function isCompanySearch(row) {
+  const name = String(row?.toolName ?? "").trim().toLowerCase();
+  if (name === "search_companies") return true;
+  const blob = `${row?.title ?? ""} ${row?.description ?? ""}`.toLowerCase();
+  return /\bsearch\w*/.test(blob) && /\bcompan(?:y|ies)\b/.test(blob);
+}
+
+function askedSentence(intent) {
+  switch (intent?.id) {
+    case "pricing": return "Asked about pricing.";
+    case "purchase": return "Asked about purchasing.";
+    case "demo_or_pilot": return "Asked about a demo.";
+    case "enterprise": return "Asked about enterprise options.";
+    case "implementation": return "Asked about implementation.";
+    case "security_compliance": return "Asked about security.";
+    case "billing_payment": return "Asked about billing.";
+    case "cancellation_downgrade": return "Asked about cancellation.";
+    default: return "Asked for a person.";
+  }
+}
+
+function noteSentence(status, intent) {
+  const note = status === "awaiting_consent"
+    ? "An escalation request is waiting to be sent."
+    : "They sent an escalation request.";
+  if (!intent) return note;
+  return `${askedSentence(intent)} ${note}`;
+}
+
+function distinctGists(rows) {
+  const gists = [];
+  for (const row of rows) {
+    const gist = eventGist(row);
+    if (!gist) continue;
+    if (gists.at(-1) !== gist) gists.push(gist);
+  }
+  return gists.slice(0, 6);
+}
+
+function describeSearches(rows) {
+  const gists = distinctGists(rows);
+  const withGist = rows.map(eventGist).filter(Boolean);
+  const missing = rows.some(row => !eventGist(row));
+  if (gists.length >= 2) {
+    return {
+      sentence: `Searched companies for ${gists[0]}, then ${gists.slice(1).join(", then ")}.`,
+      intent: null,
+      stuck: false
+    };
+  }
+  if (gists.length === 1) {
+    const intent = intentFromText(gists[0]);
+    if (intent) return { sentence: askedSentence(intent), intent, stuck: false };
+    if (!missing && withGist.length >= 2) {
+      return { sentence: `Stuck searching companies for ${gists[0]}.`, intent: null, stuck: true };
+    }
+    return { sentence: `Searched companies for ${gists[0]}.`, intent: null, stuck: false };
+  }
+  return { sentence: "Browsing the company catalog.", intent: null, stuck: false };
+}
+
+function toolTitle(row) {
+  const title = String(row?.title ?? "").trim().replace(/[.!?]+$/g, "").trim();
+  if (title) return title.slice(0, 80);
+  return String(row?.toolName ?? "").trim().replace(/_/g, " ").slice(0, 80);
+}
+
+function lowerFirst(value) {
+  if (!value) return value;
+  return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+function titleSentence(rows) {
+  const titles = [];
+  for (const row of rows) {
+    const title = toolTitle(row);
+    if (!title) continue;
+    if (titles.at(-1) !== title) titles.push(title);
+  }
+  if (!titles.length) return "No recent tool activity.";
+  if (titles.length === 1) return `${titles[0]}.`;
+  return `${titles[0]}, then ${titles.slice(1).map(lowerFirst).join(", then ")}.`;
+}
+
+function assistanceIntent(row) {
+  if (String(row?.toolName ?? "") !== "offer_assistance") return null;
+  return intentById(row?.tokens?.intent) || intentFromText(eventGist(row)) || intentById("purchase");
+}
+
+function interestPhrase(intent) {
+  switch (intent?.id) {
+    case "pricing": return "pricing";
+    case "purchase": return "purchasing";
+    case "demo_or_pilot": return "a demo";
+    case "enterprise": return "enterprise options";
+    case "implementation": return "implementation";
+    case "security_compliance": return "security";
+    case "billing_payment": return "billing";
+    case "cancellation_downgrade": return "cancellation";
+    default: return "help";
+  }
+}
+
+function goalClause(intent) {
+  switch (intent?.id) {
+    case "pricing": return "trying to find the price";
+    case "purchase": return "trying to buy";
+    case "demo_or_pilot": return "trying to see a demo";
+    case "enterprise": return "trying to sort out enterprise terms";
+    case "implementation": return "trying to figure out implementation";
+    case "security_compliance": return "trying to check security";
+    case "billing_payment": return "trying to sort out a bill";
+    case "cancellation_downgrade": return "trying to cancel or downgrade";
+    default: return "trying to reach a person";
+  }
+}
+
+function searchesBetweenAsks(searches, asks) {
+  const askTimes = asks.map(row => Date.parse(row?.at)).filter(Number.isFinite);
+  if (askTimes.length < 2) return false;
+  const first = Math.min(...askTimes);
+  const last = Math.max(...askTimes);
+  return searches.some(row => {
+    const time = Date.parse(row?.at);
+    return Number.isFinite(time) && time > first && time < last;
+  });
+}
+
+function joinTopics(gists) {
+  if (gists.length <= 1) return gists[0] || "";
+  if (gists.length === 2) return `${gists[0]} and ${gists[1]}`;
+  return `${gists.slice(0, -1).join(", ")}, and ${gists.at(-1)}`;
+}
+
+function spanPhrase(rows) {
+  const times = rows.map(row => Date.parse(row?.at)).filter(Number.isFinite);
+  if (times.length < 2) return "just now";
+  const minutes = Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 60000));
+  return minutes === 1 ? "in 1 minute" : `in ${minutes} minutes`;
+}
+
+function recentBurst(rows) {
+  const times = rows.map(row => Date.parse(row?.at)).filter(Number.isFinite);
+  if (!times.length) return rows;
+  const cutoff = Math.max(...times) - 15 * 60000;
+  const burst = rows.filter(row => {
+    const time = Date.parse(row?.at);
+    return Number.isFinite(time) && time >= cutoff;
+  });
+  return burst.length ? burst : rows;
+}
+
+function noteClause(status) {
+  if (status === "awaiting_consent") return "An escalation request is waiting to be sent.";
+  if (status === "pending") return "They sent an escalation request.";
+  return "";
+}
+
+/** Repeated asks plus the searches around them. One ask stays a short recap. */
+function interpretRepeatedInterest(rows, noteStatus = "") {
+  const burst = recentBurst(rows);
+  const asks = burst.filter(row => assistanceIntent(row));
+  if (asks.length < 2) return null;
+  const latest = assistanceIntent(asks.at(-1));
+  const same = asks.filter(row => assistanceIntent(row)?.id === latest?.id);
+  if (!latest || same.length < 2) return null;
+  const searches = burst.filter(isCompanySearch);
+  const topics = [];
+  for (const gist of searches.map(eventGist)) {
+    if (gist && !topics.includes(gist) && topics.length < 4) topics.push(gist);
+  }
+  const doing = searches.length
+    ? `Browsing companies${topics.length ? ` for ${joinTopics(topics)}` : ""}.`
+    : "Asking for a person, with no company search in this stretch.";
+  const between = searchesBetweenAsks(searches, same);
+  const signal = between
+    ? `Asked ${same.length} times ${spanPhrase([...searches, ...same])}, with more searches in between.`
+    : `Asked ${same.length} times ${spanPhrase(same)}.`;
+  const waiting = noteClause(noteStatus);
+  const intent = `${latest.label}. ${goalClause(latest).charAt(0).toUpperCase()}${goalClause(latest).slice(1)}. ${signal}${waiting ? ` ${waiting}` : ""}`;
+  return {
+    sentence: `${doing} ${intent}`,
+    doing,
+    intent,
+    intentId: latest.id,
+    stuck: false
+  };
+}
+
+function trailingAssistance(rows) {
+  let index = -1;
+  for (let i = 0; i < rows.length; i += 1) {
+    if (assistanceIntent(rows[i]) || intentById(rows[i]?.tokens?.intent)) index = i;
+  }
+  if (index < 0) return null;
+  const laterSearch = rows.slice(index + 1).some(row => isCompanySearch(row) && !intentFromText(eventGist(row)));
+  if (laterSearch) return null;
+  return assistanceIntent(rows[index]) || intentById(rows[index]?.tokens?.intent);
+}
+
+/**
+ * Deterministic job sentence from stored gists and assistance state.
+ * Failures are not part of this sentence.
+ */
+export function customerContextJob(activity, options = {}) {
+  const rows = (Array.isArray(activity) ? activity.filter(Boolean) : []).slice(-12);
+  const noteStatus = options.noteStatus === "pending" || options.noteStatus === "awaiting_consent"
+    ? options.noteStatus
+    : "";
+  const notedIntent = intentById(options.intentId);
+  const repeated = interpretRepeatedInterest(rows, noteStatus);
+  if (repeated) return repeated;
+  if (noteStatus) {
+    const intent = notedIntent || trailingAssistance(rows);
+    return {
+      sentence: noteSentence(noteStatus, intent),
+      intentId: intent?.id || "",
+      stuck: false
+    };
+  }
+  if (!rows.length) {
+    return { sentence: "No recent tool activity.", intentId: "", stuck: false };
+  }
+  const assist = trailingAssistance(rows);
+  if (assist) return { sentence: askedSentence(assist), intentId: assist.id, stuck: false };
+  const searches = rows.filter(isCompanySearch);
+  const other = rows.filter(row => !isCompanySearch(row) && String(row?.toolName ?? "") !== "offer_assistance");
+  if (searches.length && !other.length) {
+    const search = describeSearches(searches);
+    return { sentence: search.sentence, intentId: search.intent?.id || "", stuck: search.stuck };
+  }
+  if (searches.length && isCompanySearch(rows.at(-1))) {
+    const search = describeSearches(searches);
+    return { sentence: search.sentence, intentId: search.intent?.id || "", stuck: search.stuck };
+  }
+  return { sentence: titleSentence(other.length ? other : rows), intentId: "", stuck: false };
+}
+
+export function activityIntentSentence(activity, options = {}) {
+  return customerContextJob(activity, options).sentence;
 }
 
 export function publicActivityEvent(event) {
@@ -241,6 +503,9 @@ export function publicActivityEvent(event) {
     count: Math.max(1, Number(event.count) || 1)
   };
   if (event.error) row.error = event.error;
+  if (event.result) row.result = String(event.result).slice(0, 160);
+  const gist = event.gistMixed ? "" : eventGist(event);
+  if (gist) row.gist = gist;
   return row;
 }
 

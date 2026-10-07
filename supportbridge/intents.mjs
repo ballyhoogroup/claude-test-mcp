@@ -1,13 +1,13 @@
 /** Standard business intents for optional live-assistance offers. */
 export const STANDARD_ASSISTANCE_INTENTS = [
-  { id: "pricing", label: "Pricing", description: "Prices, plans, discounts, and plan inclusions" },
-  { id: "purchase", label: "Purchase", description: "Buying, quotes, procurement, contracts, or speaking with sales" },
-  { id: "demo_or_pilot", label: "Demo or pilot", description: "Demos, trials, evaluations, pilots, and walkthroughs" },
-  { id: "enterprise", label: "Enterprise", description: "Enterprise plans, volume, SLAs, custom terms, or larger deployments" },
-  { id: "implementation", label: "Implementation", description: "Setup, onboarding, migration, training, or professional services" },
-  { id: "security_compliance", label: "Security and compliance", description: "SOC 2, ISO 27001, HIPAA, GDPR, SSO, DPAs, and security reviews" },
-  { id: "billing_payment", label: "Billing and payment", description: "Charges, invoices, refunds, taxes, or payment problems" },
-  { id: "cancellation_downgrade", label: "Cancellation or downgrade", description: "Cancellation, downgrades, reducing seats, or closing an account" }
+  { id: "pricing", label: "Pricing", description: "Prices, plans, discounts, and plan inclusions", words: ["price", "prices", "pricing", "cost", "costs", "rate", "rates", "quote", "quotes", "plan", "plans", "discount", "discounts"] },
+  { id: "purchase", label: "Purchase", description: "Buying, quotes, procurement, contracts, or speaking with sales", words: ["purchase", "purchasing", "buy", "buying", "procurement", "contract", "contracts", "sales"] },
+  { id: "demo_or_pilot", label: "Demo or pilot", description: "Demos, trials, evaluations, pilots, and walkthroughs", words: ["demo", "demos", "pilot", "pilots", "trial", "trials", "evaluation", "evaluations", "walkthrough", "walkthroughs"] },
+  { id: "enterprise", label: "Enterprise", description: "Enterprise plans, volume, SLAs, custom terms, or larger deployments", words: ["enterprise", "volume", "SLA", "SLAs"] },
+  { id: "implementation", label: "Implementation", description: "Setup, onboarding, migration, training, or professional services", words: ["implementation", "setup", "onboarding", "migration", "training"] },
+  { id: "security_compliance", label: "Security and compliance", description: "SOC 2, ISO 27001, HIPAA, GDPR, SSO, DPAs, and security reviews", words: ["security", "compliance", "SOC 2", "ISO 27001", "HIPAA", "GDPR", "SSO", "DPA", "DPAs"] },
+  { id: "billing_payment", label: "Billing and payment", description: "Charges, invoices, refunds, taxes, or payment problems", words: ["billing", "bill", "bills", "invoice", "invoices", "refund", "refunds", "tax", "taxes", "payment", "payments"] },
+  { id: "cancellation_downgrade", label: "Cancellation or downgrade", description: "Cancellation, downgrades, reducing seats, or closing an account", words: ["cancellation", "cancel", "downgrade", "downgrades", "close account"] }
 ];
 
 export const ASSISTANCE_INTENT_IDS = STANDARD_ASSISTANCE_INTENTS.map(intent => intent.id);
