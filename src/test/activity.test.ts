@@ -1,0 +1,134 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { argumentPreview } from "../../within/activity.mjs";
+import { SupportBridge, identifyFromContext } from "../../within/sdk/index.mjs";
+
+test("creates the argument previews defined by the vendored SDK", () => {
+  assert.equal(argumentPreview({ query: "fintech companies" }), "fintech companies");
+  assert.equal(
+    argumentPreview({ query: "fintech companies", prompt: "compare valuations" }),
+    "fintech companies · compare valuations",
+  );
+  assert.equal(argumentPreview({ query: "email pat@example.com" }), "email [redacted]");
+  assert.equal(argumentPreview({ prompt: "use api key sb_test_not_safe" }), "use api key [redacted]");
+  assert.equal(argumentPreview({ query: "x".repeat(200) }).length, 160);
+  assert.equal(argumentPreview({ industry: "fintech", limit: 5 }), "");
+});
+
+test("current SDK posts host identity and preview in a fresh tool context", async () => {
+  const handlers = new Map<string, (args: unknown, extra: unknown) => Promise<unknown>>();
+  const server = {
+    registerTool(name: string, _config: unknown, handler: (args: unknown, extra: unknown) => Promise<unknown>) {
+      handlers.set(name, handler);
+    },
+    registerResource() {},
+  };
+  const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    requests.push({ url: String(input), body });
+    return Response.json({});
+  };
+
+  try {
+    const support = SupportBridge.install(server, {
+      apiKey: "sb_test_demo_vendor",
+      baseUrl: "https://supportbridge-service.invalid",
+      source: "pitch-fork-alpha",
+    });
+    const wrapped = support.wrapTool({
+      name: "list_companies",
+      title: "List companies",
+      description: "List companies",
+      inputSchema: {},
+      handler: async () => ({
+        content: [{ type: "text", text: "unchanged" }],
+      }),
+    });
+    server.registerTool(
+      wrapped.name,
+      { title: wrapped.title, description: wrapped.description, inputSchema: wrapped.inputSchema },
+      wrapped.handler,
+    );
+
+    await handlers.get("list_companies")?.(
+      { query: "fintech companies" },
+      {
+        authInfo: { extra: { sub: "user-42" } },
+        sessionId: "session-42",
+      },
+    );
+
+    const activity = requests.find(({ url }) => url.endsWith("/v1/activity"));
+    assert.deepEqual(
+      {
+        customerUserId: activity?.body.customerUserId,
+        customerSessionId: activity?.body.customerSessionId,
+        displayName: activity?.body.displayName,
+        argumentPreview: activity?.body.argumentPreview,
+        title: activity?.body.title,
+      },
+      {
+        customerUserId: "user-42",
+        customerSessionId: "session-42",
+        displayName: undefined,
+        argumentPreview: "fintech companies",
+        title: "List companies",
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("current SDK reads supported host identity aliases and omits missing names", () => {
+  assert.deepEqual(
+    identifyFromContext({ authInfo: { extra: { user_id: "user-42" } }, sessionId: "session-42" }),
+    { userId: "user-42", sessionId: "session-42", displayName: "" },
+  );
+});
+
+test("wrapped tools preserve their business result", async () => {
+  const handlers = new Map<string, (args: unknown, extra: unknown) => Promise<unknown>>();
+  const server = {
+    registerTool(name: string, _config: unknown, handler: (args: unknown, extra: unknown) => Promise<unknown>) {
+      handlers.set(name, handler);
+    },
+    registerResource() {},
+  };
+  const urls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    urls.push(String(input));
+    return Response.json({});
+  };
+
+  try {
+    const support = SupportBridge.install(server, {
+      apiKey: "sb_test_demo_vendor",
+      baseUrl: "https://supportbridge-service.invalid",
+      source: "pitch-fork-alpha",
+    });
+    const wrapped = support.wrapTool({
+      name: "list_companies",
+      title: "List companies",
+      description: "List companies",
+      inputSchema: {},
+      handler: async () => ({
+        content: [{ type: "text", text: "unchanged" }],
+      }),
+    });
+    server.registerTool(
+      wrapped.name,
+      { title: wrapped.title, description: wrapped.description, inputSchema: wrapped.inputSchema },
+      wrapped.handler,
+    );
+
+    const result = await handlers.get("list_companies")?.({ query: "fintech companies" }, {});
+    assert.deepEqual(result, { content: [{ type: "text", text: "unchanged" }] });
+    assert.ok(urls.some((url) => url.endsWith("/v1/activity")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

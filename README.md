@@ -24,9 +24,9 @@ so it works with:
 | `get_company` | Look up one company by its `id` (e.g. `co-001`). |
 | `list_industries` | List the four industries with company counts. |
 
-When SupportBridge is configured, its default streamlined support tools are
-installed alongside these five business tools, and each business handler is
-instrumented in `observe-only` mode. Support offers are not enabled.
+These business tools are instrumented by the vendored SupportBridge SDK. The
+SDK also registers its assistance and chat tools; Pitch-Fork does not register
+or modify those tools itself.
 
 ## Project layout
 
@@ -107,53 +107,14 @@ In the Render dashboard, open the service → **Environment**, and add:
 | --- | --- |
 | `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
 | `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com/mcp` (the full MCP endpoint, with no trailing slash) |
+| `SUPPORTBRIDGE_API_KEY` | `sb_test_demo_vendor` |
+| `SUPPORTBRIDGE_URL` | `https://app.getwith.in` |
 
 Save — Render redeploys automatically. Once both are set, `/mcp` requires a
 valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
 returning the resource metadata that points MCP clients at AuthKit.
 
-### 3. Configure SupportBridge
-
-Copy `.env.example` for local reference, then inject these variables into
-the server process before it starts. This project does not load `.env` files
-itself. For Render, open the service's **Environment** settings and set:
-
-| Key | Value |
-| --- | --- |
-| `SUPPORTBRIDGE_API_KEY` | Set privately; do not commit it |
-| `SUPPORTBRIDGE_SOURCE` | `claude-test-mcp` |
-| `SUPPORTBRIDGE_URL` | SupportBridge control-plane URL |
-| `SUPPORTBRIDGE_ENVIRONMENT` | `development` |
-| `SUPPORTBRIDGE_MODE` | `observe-only` |
-
-Within remains disabled until `SUPPORTBRIDGE_API_KEY` is set. Node 20+,
-`@modelcontextprotocol/sdk`, and `zod` are required.
-
-SDK source is copied unchanged from branch `New-build`, commit
-`0049b1edee0abb28222c1dcd96699dc2906e63be`, in
-https://github.com/supportbridge-within/supportbridge-sdk-fork:
-
-```
-within/
-  sdk/index.mjs   ← product/src/sdk/index.mjs
-  activity.mjs    ← product/src/activity.mjs
-  intents.mjs     ← product/src/intents.mjs
-```
-
-The declaration beside the SDK supplies TypeScript types. The compiled server
-imports the same root-level Within files. Do not install `@supportbridge/sdk`;
-it is a different SDK.
-
-The WorkOS identity adapter uses the verified subject, actual profile name,
-and session ID. It is needed because the host uses `authInfo.extra.subject`,
-and this SDK does not read `authInfo.extra.sessionId`. No fixed name is supplied.
-
-Installation passes `privacy: { captureArguments: false }` as requested.
-**The pinned SDK ignores this option:** it still sends safe argument tokens,
-argument previews, and result text. The three source files remain unchanged;
-disabling those fields requires a corrected upstream SDK.
-
-### 4. How the flow works
+### 3. How the flow works
 
 1. An MCP client (ChatGPT, Claude) calls `POST /mcp` with no token.
 2. This server replies `401` with a `WWW-Authenticate: Bearer
@@ -216,3 +177,7 @@ variables are configured.
   transport instance (`sessionIdGenerator: undefined`), which keeps it simple
   to run on Render's free tier without sticky sessions.
 - Pitch-Fork provides searchable company profiles and structured company information.
+
+Within SDK pinned to New-build commit `0049b1edee0abb28222c1dcd96699dc2906e63be`.
+The unchanged files are `within/sdk/index.mjs`, `within/activity.mjs`, and `within/intents.mjs`.
+This commit ignores `privacy.captureArguments: false` and still sends argument previews and result text.
