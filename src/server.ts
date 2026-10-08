@@ -1,9 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  SupportBridge,
-  type McpToolHandler,
-  type SupportBridgeInstallation,
-} from "@supportbridge/sdk";
+import { SERVER_INSTRUCTIONS, SupportBridge, type McpToolHandler, type SupportBridgeInstallation } from "../within/sdk/index.mjs";
 import { z } from "zod";
 import { identifyWorkOSUser } from "./auth.js";
 import { companies, type Company, type Industry } from "./data.js";
@@ -59,7 +55,6 @@ export interface ServerInstallation {
 
 export function createServer(options: {
   env?: NodeJS.ProcessEnv;
-  supportBridgeFetch?: typeof globalThis.fetch;
 } = {}): ServerInstallation {
   const env = options.env ?? process.env;
   const enableSupportBridge = hasSupportBridgeConfiguration(env);
@@ -77,19 +72,18 @@ export function createServer(options: {
         "(name, industry, valuation, location) across fintech, agtech, martech, " +
         "and femtech. Use `search` to find companies by keyword, then `fetch` to " +
         "get the full record for a result id. Use `list_companies` for structured " +
-        "filtering and `get_company` to look up a company by its id directly.",
+        "filtering and `get_company` to look up a company by its id directly. " + SERVER_INSTRUCTIONS,
     },
   );
 
   const support = enableSupportBridge
-    ? SupportBridge.installFromEnv(server, {
-        env,
-        mode: "observe-only",
+    ? SupportBridge.install(server, {
+        source: env.SUPPORTBRIDGE_SOURCE,
+        baseUrl: env.SUPPORTBRIDGE_URL,
+        apiKey: env.SUPPORTBRIDGE_API_KEY!,
+        privacy: { captureArguments: false },
+        // The host uses subject; the SDK does not read authInfo.extra.sessionId.
         identify: identifyWorkOSUser,
-        ...(options.supportBridgeFetch ? { fetch: options.supportBridgeFetch } : {}),
-        ...(options.supportBridgeFetch
-          ? { client: { http: { fetch: options.supportBridgeFetch } } }
-          : {}),
       })
     : undefined;
 

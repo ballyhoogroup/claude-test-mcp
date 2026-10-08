@@ -39,11 +39,9 @@ test("matching WorkOS UserInfo passes only approved, verified profile fields", a
     scopes: ["openid", "profile", "email"],
     extra: { subject, organizationId: "org_test", sessionId: "session_test", ...profile },
   } }), {
-    userId: "oauth:user_test",
-    organizationId: "org_test",
-    accountId: "workos:org_test",
+    userId: "user_test",
     sessionId: "session_test",
-    traits: { name: "Test User", email: "test.user@example.invalid" },
+    displayName: "Test User",
   });
 });
 
@@ -54,7 +52,7 @@ test("unverified email is excluded by the WorkOS adapter", async () => {
   const identity = identifyWorkOSUser({ authInfo: {
     token, clientId: "test-client", scopes: [], extra: { subject, ...profile },
   } });
-  assert.deepEqual(identity?.traits, { name: "Test User" });
+  assert.equal(identity?.displayName, "Test User");
 });
 
 test("subject mismatch, UserInfo failure, and exceptions do not enrich identity", async () => {
@@ -68,8 +66,8 @@ test("subject mismatch, UserInfo failure, and exceptions do not enrich identity"
     const identity = identifyWorkOSUser({ authInfo: {
       token, clientId: "test-client", scopes: [], extra: { subject, ...profile },
     } });
-    assert.equal(identity?.userId, "oauth:user_test");
-    assert.equal(identity?.traits, undefined);
+    assert.equal(identity?.userId, "user_test");
+    assert.equal(identity?.displayName, undefined);
   }
 });
 

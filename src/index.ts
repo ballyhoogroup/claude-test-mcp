@@ -1,7 +1,7 @@
 import express from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { SDK_VERSION as supportBridgeSdkVersion } from "@supportbridge/sdk";
+const supportBridgeSdkVersion = "0049b1edee0abb28222c1dcd96699dc2906e63be";
 import { createServer, supportBridgeEnabled } from "./server.js";
 import {
   authEnabled,
@@ -118,16 +118,11 @@ app.use("/mcp", async (req, res, next) => {
 // is created per request, so there is no session state to manage across
 // Render's ephemeral/scaled instances.
 app.post("/mcp", async (req, res) => {
-  const { server, support } = createServer();
+  const { server } = createServer();
   let closed = false;
   const close = async () => {
     if (closed) return;
     closed = true;
-    // SupportBridge removes its owned tools/resources while the MCP connection
-    // is still available, then the request-scoped transport can shut down.
-    if (support) {
-      await Promise.allSettled([support.close()]);
-    }
     await Promise.allSettled([transport.close(), server.close()]);
   };
   const transport = new StreamableHTTPServerTransport({

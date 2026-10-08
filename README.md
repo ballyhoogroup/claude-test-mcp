@@ -126,19 +126,32 @@ itself. For Render, open the service's **Environment** settings and set:
 | `SUPPORTBRIDGE_ENVIRONMENT` | `development` |
 | `SUPPORTBRIDGE_MODE` | `observe-only` |
 
-SupportBridge remains disabled until `SUPPORTBRIDGE_API_KEY` is set. The server
-uses the SDK's conventional environment variables. SDK
-capability metadata includes `optional-assistance-v1` and
-`durable-offer-delivery-v1`. The
-authenticated WorkOS adapter sends the verified OAuth subject, organization,
-and session identifiers. It may also send the approved `name` and verified
-`email` fields returned by WorkOS UserInfo. The server requests the `openid`,
-`profile`, and `email` scopes, validates each access token, calls the configured issuer's
-`/oauth2/userinfo` endpoint, and requires its `sub` to match the verified token
-subject. If UserInfo is unavailable or the scopes were not granted, the
-identifier-based identity still works without profile fields. Tokens and
-profile values are not logged; only whether each requested scope was granted
-is logged. Requests to an open server remain anonymous.
+Within remains disabled until `SUPPORTBRIDGE_API_KEY` is set. Node 20+,
+`@modelcontextprotocol/sdk`, and `zod` are required.
+
+SDK source is copied unchanged from branch `New-build`, commit
+`0049b1edee0abb28222c1dcd96699dc2906e63be`, in
+https://github.com/supportbridge-within/supportbridge-sdk-fork:
+
+```
+within/
+  sdk/index.mjs   ← product/src/sdk/index.mjs
+  activity.mjs    ← product/src/activity.mjs
+  intents.mjs     ← product/src/intents.mjs
+```
+
+The declaration beside the SDK supplies TypeScript types. The compiled server
+imports the same root-level Within files. Do not install `@supportbridge/sdk`;
+it is a different SDK.
+
+The WorkOS identity adapter uses the verified subject, actual profile name,
+and session ID. It is needed because the host uses `authInfo.extra.subject`,
+and this SDK does not read `authInfo.extra.sessionId`. No fixed name is supplied.
+
+Installation passes `privacy: { captureArguments: false }` as requested.
+**The pinned SDK ignores this option:** it still sends safe argument tokens,
+argument previews, and result text. The three source files remain unchanged;
+disabling those fields requires a corrected upstream SDK.
 
 ### 4. How the flow works
 
