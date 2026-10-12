@@ -107,8 +107,9 @@ In the Render dashboard, open the service → **Environment**, and add:
 | --- | --- |
 | `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
 | `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com/mcp` (the full MCP endpoint, with no trailing slash) |
-| `SUPPORTBRIDGE_API_KEY` | `sb_test_demo_vendor` |
-| `SUPPORTBRIDGE_URL` | `https://app.getwith.in` |
+| `SUPPORTBRIDGE_API_KEY` | Set privately in the hosting environment; never commit it. |
+| `SUPPORTBRIDGE_URL` | `https://app.getwith.in` (must be reachable by this process) |
+| `SUPPORTBRIDGE_SOURCE` | `pitch-fork-alpha` |
 
 Save — Render redeploys automatically. Once both are set, `/mcp` requires a
 valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
@@ -178,6 +179,6 @@ variables are configured.
   to run on Render's free tier without sticky sessions.
 - Pitch-Fork provides searchable company profiles and structured company information.
 
-Within SDK pinned to New-build commit `0049b1edee0abb28222c1dcd96699dc2906e63be`.
+Within SDK pinned to New-build commit `91efb696e5614da1627744aa65dc6f7c835768b0`.
 The unchanged files are `within/sdk/index.mjs`, `within/activity.mjs`, and `within/intents.mjs`.
 This commit ignores `privacy.captureArguments: false` and still sends argument previews and result text.

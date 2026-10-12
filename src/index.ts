@@ -37,7 +37,7 @@ app.get("/", (_req, res) => {
     status: "ok",
     mcpEndpoint: "/mcp",
     authEnabled,
-    supportBridgeSdkVersion: "0049b1edee0abb28222c1dcd96699dc2906e63be",
+    supportBridgeSdkVersion: "91efb696e5614da1627744aa65dc6f7c835768b0",
   });
 });
 

@@ -47,13 +47,13 @@ const INTENT_WORDING = STANDARD_ASSISTANCE_INTENTS
   .map(intent => `${intent.label} (${intent.words.join(", ")})`)
   .join("; ");
 
-export const SERVER_INSTRUCTIONS = `Call offer_assistance when the user asks about pricing or any topic it covers. That call creates the consent card and is the answer. Search, list, and fetch return catalog records and do not create the card. The call does not contact anyone until the user agrees on the card. If a tool result includes an \`assistance\` object with a suggested message, relay that message to the user. offer_assistance covers: ${INTENT_WORDING}.`;
+export const SERVER_INSTRUCTIONS = `Call offer_assistance when the user asks about pricing or any topic it covers. That call creates the consent card and is the answer. Search, list, and fetch return catalog records and do not create the card. The call does not contact anyone until the user agrees on the card. If a tool result includes an \`assistance\` object with a suggested message, relay that message. That offer is text, and the user replies in text. When the user accepts, call request_assistance with its offerId. When the user declines, call decline_assistance with its offerId. offer_assistance covers: ${INTENT_WORDING}.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by offer_assistance.";
 
 export const OFFER_ASSISTANCE_DESCRIPTION = `Call this tool when the user asks about ${INTENT_WORDING}. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
 export const CONFIRM_ASSISTANCE_DESCRIPTION = "Starts the live chat for an assistance card the user accepted. Pass the offerId from that card. Returns the conversation status.";
-export const REQUEST_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts the assistance card. Pass the offerId from that card.";
+export const REQUEST_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts a manual offer in text. Pass the offerId from the assistance object on the earlier tool result. Also opens the chat after the user accepts an assistance card, using the offerId from that card.";
 export const DECLINE_ASSISTANCE_DESCRIPTION = "Declines a live-assistance offer. Pass the offerId. Does not contact anyone.";
 
 /** Copy a vendor tool without rewriting its description. Result interception stays on the installed wrapper. */
@@ -371,6 +371,7 @@ SupportBridge.install = function install(server, options) {
   return installation;
 };
 
+/** Manual offer: one text line plus structured assistance. No card and no buttons. */
 export function attachInvitation(result, offer) {
   const assistance = assistanceFromOffer(offer);
   const content = Array.isArray(result?.content) ? [...result.content] : [];
@@ -379,22 +380,9 @@ export function attachInvitation(result, offer) {
     ...(result?.structuredContent && typeof result.structuredContent === "object" ? result.structuredContent : {}),
     assistance
   };
-  return {
-    ...result,
-    content,
-    structuredContent,
-    _meta: {
-      ...(result?._meta && typeof result._meta === "object" ? result._meta : {}),
-      ...uiMeta(INTENT_OFFER_RESOURCE),
-      "supportbridge/offer": {
-        offerId: offer.id,
-        offer_id: offer.id,
-        vendorName: offer.vendorName,
-        representativeName: offer.representativeName,
-        representativeRole: offer.representativeRole
-      }
-    }
-  };
+  const next = { ...result, content, structuredContent };
+  delete next._meta;
+  return next;
 }
 
 function uiMeta(resourceUri) {
