@@ -179,6 +179,6 @@ variables are configured.
   to run on Render's free tier without sticky sessions.
 - Pitch-Fork provides searchable company profiles and structured company information.
 
-Within SDK pinned to New-build commit `91efb696e5614da1627744aa65dc6f7c835768b0`.
+Within SDK pinned to main commit `e09703845cfba83ceafdf5433260679fcdb9b0cc`.
 The unchanged files are `within/sdk/index.mjs`, `within/activity.mjs`, and `within/intents.mjs`.
 This commit ignores `privacy.captureArguments: false` and still sends argument previews and result text.

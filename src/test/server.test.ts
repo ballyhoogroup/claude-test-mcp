@@ -29,6 +29,7 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       "fetch",
       "file_escalation",
       "get_company",
+      "get_vendor_answer",
       "list_companies",
       "list_industries",
       "offer_assistance",

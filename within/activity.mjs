@@ -251,7 +251,7 @@ function isCompanySearch(row) {
   return /\bsearch\w*/.test(blob) && /\bcompan(?:y|ies)\b/.test(blob);
 }
 
-function askedSentence(intent) {
+export function askedSentence(intent) {
   switch (intent?.id) {
     case "pricing": return "Asked about pricing.";
     case "purchase": return "Asked about purchasing.";

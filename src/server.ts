@@ -63,6 +63,7 @@ export function createServer(): ServerInstallation {
     baseUrl: process.env.SUPPORTBRIDGE_URL,
     source: process.env.SUPPORTBRIDGE_SOURCE,
     privacy: { captureArguments: false },
+    vendorName: "Pitch-Fork",
   });
 
   const registerBusinessTool = (tool: {
