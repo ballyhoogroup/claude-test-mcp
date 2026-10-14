@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { withCompanyAccess } from "./company-access.js";
 import { SERVER_INSTRUCTIONS, SupportBridge } from "../within/sdk/index.mjs";
 import { companies, type Company, type Industry } from "./data.js";
 
@@ -73,7 +74,7 @@ export function createServer(): ServerInstallation {
     inputSchema: Record<string, z.ZodTypeAny>;
     handler: (args: any, extra: any) => any;
   }) => {
-    const wrapped = support.wrapTool(tool);
+    const wrapped = support.wrapTool({ ...tool, handler: withCompanyAccess(tool.name, tool.handler) });
     server.registerTool(
       wrapped.name,
       {

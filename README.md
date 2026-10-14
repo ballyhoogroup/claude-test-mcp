@@ -182,3 +182,22 @@ variables are configured.
 Within SDK pinned to main commit `e09703845cfba83ceafdf5433260679fcdb9b0cc`.
 The unchanged files are `within/sdk/index.mjs`, `within/activity.mjs`, and `within/intents.mjs`.
 This commit ignores `privacy.captureArguments: false` and still sends argument previews and result text.
+
+## Test company allowance
+
+Signed-in users start with 10 unique companies shared across search, list_companies,
+fetch, and get_company. Previously viewed companies remain accessible. Search results
+count as views. Industry counts do not consume the allowance. New company access
+returns a company_limit_reached error after the allowance is exhausted.
+
+To raise an allowance, set COMPANY_ACCESS_LIMITS_JSON privately in Render's server
+environment to an object mapping the user's verified WorkOS subject to a number or
+"unlimited", for example {"user_example":50}. Unlisted users retain the default 10.
+This is server-only configuration; no public admin tool or endpoint is exposed.
+Redeploying applies the setting.
+
+Viewed IDs are stored in .data/company-access.json (ignored by Git). This test uses
+a single server process. Render's free ephemeral filesystem resets this history on
+redeploy or instance replacement. For durable limits, use persistent storage and set
+COMPANY_ACCESS_STORE_PATH to its file path. Multiple instances require a shared,
+transactional store before this can enforce a production-wide allowance.

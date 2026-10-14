@@ -8,9 +8,11 @@ process.env.SUPPORTBRIDGE_API_KEY = "sb_test_demo_vendor";
 process.env.SUPPORTBRIDGE_URL = "https://supportbridge-service.invalid";
 globalThis.fetch = async () => Response.json({});
 
-async function connectedClient() {
+async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
   const { server } = createServer();
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const send = clientTransport.send.bind(clientTransport);
+  clientTransport.send = (message, options) => send(message, { ...options, authInfo: { token: "test", clientId: "test", scopes: [], extra: { sub: userId } } });
   const client = new Client({ name: "pitch-fork-test", version: "1.0.0" });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return { client, server };
@@ -145,4 +147,29 @@ test("business tool descriptions stay business-only", async () => {
     await client.close();
     await server.close();
   }
+});
+
+test("company budget is shared across MCP tool calls and fresh server instances", async () => {
+  const user = `quota-${crypto.randomUUID()}`;
+  const first = await connectedClient(user);
+  try {
+    const result = await first.client.callTool({ name: "list_companies", arguments: { limit: 100 } });
+    const data = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    assert.equal(data.companies.length, 10);
+    assert.equal(data.access.remaining, 0);
+  } finally { await first.client.close(); await first.server.close(); }
+  const next = await connectedClient(user);
+  try {
+    for (const name of ["get_company", "fetch"]) {
+      const blocked = await next.client.callTool({ name, arguments: { id: "co-011" } });
+      assert.equal(blocked.isError, true);
+      assert.match(JSON.stringify(blocked), /company_limit_reached/);
+      assert.doesNotMatch(JSON.stringify(blocked), /CreditBridge/);
+      const revisit = await next.client.callTool({ name, arguments: { id: "co-001" } });
+      assert.notEqual(revisit.isError, true);
+    }
+    const search = await next.client.callTool({ name: "search", arguments: { query: "" } });
+    const data = JSON.parse((search.content as Array<{ text: string }>)[0].text);
+    assert.equal(data.results.length, 10);
+  } finally { await next.client.close(); await next.server.close(); }
 });
