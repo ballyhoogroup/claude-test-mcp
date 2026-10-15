@@ -24,19 +24,30 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
     assert.match(client.getInstructions() ?? "", /offer_assistance/);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     const tools = await client.listTools();
+    assert.match(tools.tools.find(tool => tool.name === "ask_company")?.description ?? "", /Ask Pitch-Fork/);
+    assert.match(tools.tools.find(tool => tool.name === "offer_assistance")?.description ?? "", /Fallback when ask_company is unavailable/);
+    assert.equal(tools.tools.find(tool => tool.name === "confirm_assistance")?.description, "Deprecated. Call accept_invitation instead.");
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
+      "accept_invitation",
+      "ask_company",
       "confirm_assistance",
       "decline_assistance",
       "decline_escalation",
+      "decline_invitation",
+      "end_conversation",
       "fetch",
       "file_escalation",
       "get_company",
-      "get_vendor_answer",
+      "get_invitation",
+      "leave_note",
       "list_companies",
       "list_industries",
       "offer_assistance",
+      "read_conversation",
       "request_assistance",
+      "request_person",
       "search",
+      "send_to_person",
       "support_end_session",
       "support_get_messages",
       "support_get_offer",

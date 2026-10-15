@@ -179,8 +179,8 @@ variables are configured.
   to run on Render's free tier without sticky sessions.
 - Pitch-Fork provides searchable company profiles and structured company information.
 
-Within SDK pinned to main commit `e09703845cfba83ceafdf5433260679fcdb9b0cc`.
-The unchanged files are `within/sdk/index.mjs`, `within/activity.mjs`, and `within/intents.mjs`.
+Within SDK copied from the local supportbridge-sdk-fork working tree (including local edits).
+The copied files are `within/sdk/index.mjs`, `within/activity.mjs`, `within/intents.mjs`, and `within/company-agent.mjs`. The health response identifies the copied SDK entry point by SHA-256.
 This commit ignores `privacy.captureArguments: false` and still sends argument previews and result text.
 
 ## Test company allowance

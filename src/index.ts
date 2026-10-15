@@ -38,7 +38,7 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     companyAccessDefaultLimit: 10,
-    supportBridgeSdkVersion: "e09703845cfba83ceafdf5433260679fcdb9b0cc",
+    supportBridgeSdkVersion: "local-sha256:45bf99820f1d68ad018c6a52dd97f588f7652234fc8597e668eb707684cf1d65",
   });
 });
 
