@@ -59,6 +59,16 @@ export function createServer(): ServerInstallation {
     },
   );
 
+  // Keep the SDK registration and instrumentation, but remove its compatibility duplicates.
+  const registerTool = server.registerTool.bind(server);
+  server.registerTool = ((name: string, config: any, handler: any) => {
+    const registered = registerTool(name, config, handler);
+    if (name === "offer_assistance" || config.description?.startsWith("Deprecated.")) {
+      registered.remove();
+    }
+    return registered;
+  }) as typeof server.registerTool;
+
   const support = SupportBridge.install(server, {
     apiKey: process.env.SUPPORTBRIDGE_API_KEY,
     baseUrl: process.env.SUPPORTBRIDGE_URL,
@@ -66,6 +76,12 @@ export function createServer(): ServerInstallation {
     privacy: { captureArguments: false },
     vendorName: "Pitch-Fork",
   });
+
+  // install publishes the exported instructions; omit the fallback sentence for this host.
+  const protocol = server.server as unknown as { _instructions: string };
+  protocol._instructions = protocol._instructions.replace(
+    "offer_assistance is the same call for hosts that cannot call ask_company. ", "",
+  );
 
   const registerBusinessTool = (tool: {
     name: string;
