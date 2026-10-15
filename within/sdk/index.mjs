@@ -246,6 +246,32 @@ function vendorCardFields(answer, subject) {
 
 function vendorAnswerResult(payload) {
   const answer = payload.answer && typeof payload.answer === "object" ? payload.answer : { text: String(payload.answer ?? "") };
+  if (payload.conversation?.id) {
+    const conversation = payload.conversation;
+    const spoken = splitVendorAnswer(answer?.text ?? answer);
+    const name = conversation.representativeName || "support";
+    return {
+      content: [
+        { type: "text", text: spoken.direct_answer || answer.text || "" },
+        { type: "text", text: `You already have a live chat with ${name}. Opening that conversation.` }
+      ],
+      structuredContent: {
+        answer,
+        ...spoken,
+        status: "accepted",
+        offered: false,
+        chatStarted: true,
+        conversationId: conversation.id,
+        conversation,
+        representativeName: conversation.representativeName || "",
+        representativeRole: conversation.representativeRole || "",
+        vendorName: conversation.vendorName || "",
+        offerId: conversation.offerId || "",
+        offer_id: conversation.offerId || ""
+      },
+      _meta: uiMeta(INTENT_OFFER_RESOURCE)
+    };
+  }
   if (payload.escalation && !payload.offer) {
     const note = payload.escalation;
     const copy = asyncEscalationCopy(note);
@@ -342,7 +368,7 @@ function vendorAnswerResult(payload) {
     const firstName = String(offer.representativeName || "").trim().split(/\s+/)[0];
     const topic = topicPhrase(offer.intent, offer.intentLabel);
     copy.acceptTool = "request_assistance";
-    copy.acceptLabel = firstName ? `Ask ${firstName}` : "Chat with support";
+    copy.acceptLabel = firstName ? `Chat with ${firstName}` : "Chat with support";
     copy.declineLabel = "Not now";
     copy.suggestedMessage = firstName
       ? `${firstName} can help with ${topic}. Answer in two or three sentences and point the user to ${firstName} for a quote.`
@@ -1707,6 +1733,37 @@ let vaFull="";
 let vaContextText="";
 let vaExpanded=false;
 let vaUserQuestion="";
+let agentFollowUpOffer="";
+function widgetAgentOffer(){
+  try{
+    const state=window.openai&&window.openai.widgetState;
+    return state&&typeof state.agentFollowUpOffer==="string"?state.agentFollowUpOffer:"";
+  }catch(error){return "";}
+}
+function rememberAgentFollowUp(id){
+  agentFollowUpOffer=id||"";
+  try{
+    const openai=window.openai;
+    if(openai&&typeof openai.setWidgetState==="function"){
+      const next=Object.assign({}, openai.widgetState||{}, {agentFollowUpOffer:agentFollowUpOffer});
+      const saved=openai.setWidgetState(next);
+      if(saved&&typeof saved.then==="function") saved.catch(()=>{});
+    }
+  }catch(error){}
+}
+function agentFollowUpOpen(id){
+  return Boolean(id)&&(agentFollowUpOffer===id||widgetAgentOffer()===id);
+}
+function showAgentFollowUp(){
+  vaAgent.hidden=false;
+  vaAccept.hidden=true;
+  vaDecline.hidden=true;
+  vaQuestion.hidden=true;
+  vaNote.hidden=true;
+  vaPrivacyText.textContent="";
+  vaStatus.classList.remove("error");
+  vaStatus.textContent="";
+}
 function resultBags(result){
   if(!result||typeof result!=="object")return [];
   return [result.structuredContent,result.toolOutput,result.toolResponseMetadata,result.result,result].filter(bag=>bag&&typeof bag==="object");
@@ -1840,9 +1897,11 @@ function renderVendor(payload){
   vaOffer.hidden=!offerId;
   const topic=payload.topic||String(payload.intentLabel||"this").toLowerCase();
   vaUserQuestion=payload.user_question||"";
-  vaAgent.hidden=true;
-  vaAccept.hidden=false;
-  vaDecline.hidden=false;
+  const keepAgent=kind==="agent"&&agentFollowUpOpen(offerId);
+  if(keepAgent) agentFollowUpOffer=offerId;
+  vaAgent.hidden=!keepAgent;
+  vaAccept.hidden=keepAgent;
+  vaDecline.hidden=keepAgent;
   if(kind==="agent"){
     vaEyebrow.hidden=false;
     vaEyebrow.textContent="VENDOR ASSISTANT";
@@ -1855,7 +1914,11 @@ function renderVendor(payload){
     vaRepSub.textContent="No one from the team is taking this. The assistant answers from the saved context.";
     vaAcceptLabel.textContent=payload.acceptLabel||"Talk to the assistant";
     vaDecline.textContent=payload.declineLabel||"Not now";
-    vaPrivacyText.textContent="Nothing starts until you choose Talk to the assistant.";
+    vaPrivacyText.textContent=keepAgent?"":"Nothing starts until you choose Talk to the assistant.";
+    if(keepAgent){
+      vaQuestion.hidden=true;
+      vaNote.hidden=true;
+    }
   }else if(note){
     const first=rep.first_name||String(rep.name||"").split(" ")[0];
     const known=Boolean(rep.name)&&rep.available===false;
@@ -1887,7 +1950,7 @@ function renderVendor(payload){
     vaDot.hidden=rep.available!==true;
     vaDot.classList.remove("is-offline");
     const first=rep.first_name||String(rep.name||"").split(" ")[0];
-    const ask=payload.acceptLabel||(first?"Ask "+first:"Chat with support");
+    const ask=payload.acceptLabel||(first?"Chat with "+first:"Chat with support");
     vaAcceptLabel.textContent=ask;
     vaDecline.textContent=payload.declineLabel||"Not now";
     vaPrivacyText.textContent="Nothing is sent until you choose "+ask+".";
@@ -2032,13 +2095,8 @@ async function sendAgent(text){
     line.textContent=(message.role==="user"?"You: ":"Assistant: ")+String(message.text||"");
     vaAgentLog.append(line);
   }
-  vaAgent.hidden=false;
-  vaAccept.hidden=true;
-  vaDecline.hidden=true;
-  vaQuestion.hidden=true;
-  vaNote.hidden=true;
-  vaPrivacyText.textContent="";
-  vaStatus.classList.remove("error");
+  rememberAgentFollowUp(offerId);
+  showAgentFollowUp();
   vaStatus.textContent=payload.configured===false?"Repeating the saved answer. No model key is set on this service.":"";
   vaAgentInput.value="";
   settled=false;
@@ -2053,11 +2111,8 @@ vaAccept.onclick=async()=>{
   vaStatus.textContent=acceptTool==="file_escalation"?"Sending…":"Connecting…";
   try{
     if(acceptTool==="talk_to_vendor_agent"){
-      vaAgent.hidden=false;
-      vaAccept.hidden=true;
-      vaDecline.hidden=true;
-      vaPrivacyText.textContent="";
-      vaStatus.textContent="";
+      rememberAgentFollowUp(offerId);
+      showAgentFollowUp();
       setBusy(false);
       vaAgentInput.focus();
       fitFrame();
@@ -2108,6 +2163,7 @@ vaDecline.onclick=async()=>{
   vaStatus.textContent="Declining…";
   try{
     await callTool(declineTool,{offer_id:offerId,offerId:offerId});
+    rememberAgentFollowUp("");
     settled=true;
     offerClosed=true;
     stopPolling();

@@ -205,3 +205,18 @@ test("vendor answers use the signed-in identity and answers endpoint without sta
     await client.close(); await server.close();
   }
 });
+
+test("legacy support names are absent and cannot be called", async () => {
+  const { client, server } = await connectedClient();
+  try {
+    const { tools } = await client.listTools();
+    const names = tools.map(tool => tool.name);
+    assert.equal(new Set(names).size, names.length);
+    for (const name of ["ask_company", "show_assistance_offer", "accept_invitation", "request_person", "leave_note", "decline_invitation", "read_conversation", "send_to_person", "end_conversation", "get_invitation"]) {
+      assert.ok(!names.includes(name), name);
+      const result = await client.callTool({ name, arguments: {} });
+      assert.equal(result.isError, true, name);
+      assert.match(JSON.stringify(result.content), /not found/i, name);
+    }
+  } finally { await client.close(); await server.close(); }
+});
