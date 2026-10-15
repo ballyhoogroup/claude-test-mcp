@@ -38,8 +38,8 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     companyAccessDefaultLimit: 10,
-    supportToolNames: "company-questions-current-tools",
-    supportBridgeSdkVersion: "local-sha256:038435006253baaa2ebf8ca03977805cfcc3ac855b3c72320c0bc3f0b6607b39",
+    supportToolNames: "october-12-support-tools",
+    supportBridgeSdkVersion: "local-sha256:33b15d40a77d29b2e0d7185945332efa7d7bad5347271f07191390965430e854",
   });
 });
 

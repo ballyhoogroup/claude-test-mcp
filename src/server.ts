@@ -59,14 +59,6 @@ export function createServer(): ServerInstallation {
     },
   );
 
-  // Let the SDK own registration, then hide its deprecated compatibility aliases.
-  const registerTool = server.registerTool.bind(server);
-  server.registerTool = ((name: string, config: any, handler: any) => {
-    const registered = registerTool(name, config, handler);
-    if (config.description?.startsWith("Deprecated.")) registered.remove();
-    return registered;
-  }) as typeof server.registerTool;
-
   const support = SupportBridge.install(server, {
     apiKey: process.env.SUPPORTBRIDGE_API_KEY,
     baseUrl: process.env.SUPPORTBRIDGE_URL,

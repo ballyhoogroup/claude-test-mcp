@@ -21,46 +21,34 @@ async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
 test("exposes the business tools and SDK-managed assistance tools", async () => {
   const { client, server } = await connectedClient();
   try {
-    assert.match(client.getInstructions() ?? "", /ask_company/);
-    assert.match(client.getInstructions() ?? "", /offer_assistance/);
+    assert.match(client.getInstructions() ?? "", /Call offer_assistance when the user asks about pricing/);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
+    assert.doesNotMatch(client.getInstructions() ?? "", /ask_company|get_vendor_answer|Company questions|no public price list/i);
     const tools = await client.listTools();
-    const companyDescription = tools.tools.find(tool => tool.name === "ask_company")?.description ?? "";
-    assert.ok(companyDescription.startsWith("Use this whenever the user asks about Pitch Fork's pricing, plans, purchasing"));
-    assert.ok(companyDescription.endsWith("The vendor is contacted only after request_assistance or file_escalation succeeds."));
-    assert.match(companyDescription, /Call it before answering such questions from general knowledge/);
-    for (const name of ["ask_company", "offer_assistance", "search", "fetch", "get_company", "list_companies"]) {
-      assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
+    const expectedSupport = new Map([
+      ["offer_assistance", "Pricing and commercial questions"],
+      ["confirm_assistance", "Confirm assistance"],
+      ["request_assistance", "Request assistance"],
+      ["file_escalation", "File escalation"],
+      ["decline_escalation", "Decline escalation"],
+      ["decline_assistance", "Decline assistance"],
+      ["support_get_messages", "Get assistance messages"],
+      ["support_send_message", "Send assistance message"],
+      ["support_end_session", "End assistance session"],
+      ["support_get_offer", "Get assistance offer"],
+    ]);
+    assert.deepEqual(tools.tools.map(tool => tool.name).sort(),
+      [...expectedSupport.keys(), "search", "fetch", "get_company", "list_companies", "list_industries"].sort());
+    for (const [name, title] of expectedSupport) {
+      assert.equal(tools.tools.find(tool => tool.name === name)?.title, title);
     }
-    assert.doesNotMatch(client.getInstructions() ?? "", /get_vendor_answer|Pricing and commercial questions|no public price list|Call offer_assistance when the user asks/i);
-    for (const name of ["ask_company", "offer_assistance"]) {
-      assert.equal(tools.tools.find(tool => tool.name === name)?.title, "Company questions");
+    assert.equal(tools.tools.find(tool => tool.name === "offer_assistance")?._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
+    for (const name of ["search", "fetch", "get_company", "list_companies", "list_industries"]) {
+      assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
+      assert.match(tools.tools.find(tool => tool.name === name)?.description ?? "", /Pitch Fork/);
     }
     const resources = await client.listResources();
     assert.deepEqual(resources.resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
-    for (const resource of resources.resources) {
-      assert.deepEqual((resource._meta?.ui as { visibility: string[] })?.visibility, ["app"]);
-      assert.doesNotMatch(resource.description ?? "", /document/i);
-    }
-    assert.ok(tools.tools.every(tool => !tool.description?.startsWith("Deprecated.")));
-    assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
-      "accept_invitation",
-      "ask_company",
-      "decline_invitation",
-      "end_conversation",
-      "fetch",
-      "get_company",
-      "get_invitation",
-      "leave_note",
-      "list_companies",
-      "list_industries",
-      "offer_assistance",
-      "read_conversation",
-      "request_person",
-      "search",
-      "send_to_person",
-      "talk_to_vendor_agent",
-    ]);
   } finally {
     await client.close();
     await server.close();
@@ -97,7 +85,7 @@ test("pricing text in a business tool does not create or append an assistance of
   }
 });
 
-test("ask_company returns the assistance card", async () => {
+test("offer_assistance returns the assistance card", async () => {
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url.endsWith("/v1/offers/intent")) {
@@ -120,7 +108,7 @@ test("ask_company returns the assistance card", async () => {
   const { client, server } = await connectedClient();
   try {
     const result = await client.callTool({
-      name: "ask_company",
+      name: "offer_assistance",
       arguments: { intent: "pricing", issueSummary: "Customer asked about pricing." },
     });
     assert.equal(result.isError, undefined);

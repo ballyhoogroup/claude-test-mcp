@@ -5,7 +5,7 @@ export const STANDARD_ASSISTANCE_INTENTS = [
   { id: "demo_or_pilot", label: "Demo or pilot", description: "Demos, trials, evaluations, pilots, and walkthroughs", words: ["demo", "demos", "pilot", "pilots", "trial", "trials", "evaluation", "evaluations", "walkthrough", "walkthroughs"] },
   { id: "enterprise", label: "Enterprise", description: "Enterprise plans, volume, SLAs, custom terms, or larger deployments", words: ["enterprise", "volume", "SLA", "SLAs"] },
   { id: "implementation", label: "Implementation", description: "Setup, onboarding, migration, training, or professional services", words: ["implementation", "setup", "onboarding", "migration", "training"] },
-  { id: "security_compliance", label: "Security and compliance", description: "SOC 2, ISO 27001, HIPAA, GDPR, SSO, DPAs, and security reviews", words: ["security", "compliance", "policy", "policies", "SOC 2", "ISO 27001", "HIPAA", "GDPR", "SSO", "DPA", "DPAs"] },
+  { id: "security_compliance", label: "Security and compliance", description: "SOC 2, ISO 27001, HIPAA, GDPR, SSO, DPAs, and security reviews", words: ["security", "compliance", "SOC 2", "ISO 27001", "HIPAA", "GDPR", "SSO", "DPA", "DPAs"] },
   { id: "billing_payment", label: "Billing and payment", description: "Charges, invoices, refunds, taxes, or payment problems", words: ["billing", "bill", "bills", "invoice", "invoices", "refund", "refunds", "tax", "taxes", "payment", "payments"] },
   { id: "cancellation_downgrade", label: "Cancellation or downgrade", description: "Cancellation, downgrades, reducing seats, or closing an account", words: ["cancellation", "cancel", "downgrade", "downgrades", "close account"] }
 ];
@@ -65,10 +65,9 @@ function resolveAssistanceIntent(rawIntent, haystack) {
   if (/\b(demo|pilot|trial|evaluat|walkthrough)\b/.test(haystack) || /demo|pilot|trial/.test(normalized)) return "demo_or_pilot";
   if (/\b(enterprise|volume|sla)\b/.test(haystack) || /enterprise/.test(normalized)) return "enterprise";
   if (/\b(implement|onboard|migrat|train|professional.?service)\b/.test(haystack) || /implement|onboard/.test(normalized)) return "implementation";
-  if (/\b(secur|complian|soc|hipaa|gdpr|sso|dpa|encrypt|privacy|certif|audit|penetration|pen.?test|residency|access control|mfa|questionnaire|subprocessor)\b/.test(haystack) || /secur|complian|encrypt|privacy|certif|audit|mfa/.test(normalized)) return "security_compliance";
+  if (/\b(secur|complian|soc|hipaa|gdpr|sso|dpa)\b/.test(haystack) || /secur|complian/.test(normalized)) return "security_compliance";
   if (/\b(bill|invoice|refund|tax|payment)\b/.test(haystack) || /bill|invoice|payment/.test(normalized)) return "billing_payment";
   if (/\b(cancel|downgrad|close.?account|churn)\b/.test(haystack) || /cancel|downgrad/.test(normalized)) return "cancellation_downgrade";
-  if (/\bpolic/.test(haystack) || /polic/.test(normalized)) return "security_compliance";
   if (/\b(support|talk|speak|chat|help|human|representative|agent|person)\b/.test(haystack) || /support|talk|help/.test(normalized)) {
     return "purchase";
   }
