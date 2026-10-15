@@ -132,3 +132,13 @@ test("wrapped tools preserve their business result", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("verified email becomes lowercase customer identity while names and subject fallback are preserved", () => {
+  for (const verification of [{ emailVerified: true }, { email_verified: true }]) {
+    assert.deepEqual(identifyFromContext({ authInfo: { extra: { sub: "subject-42", email: " Person@Example.COM ", name: "Person Name", ...verification } }, sessionId: "session-42" }),
+      { userId: "person@example.com", sessionId: "session-42", displayName: "Person Name" });
+  }
+  for (const extra of [{ email: "person@example.com", emailVerified: false }, { email: "person@example.com" }, { emailVerified: true }]) {
+    assert.equal(identifyFromContext({ authInfo: { extra: { sub: "subject-42", ...extra } } }).userId, "subject-42");
+  }
+});

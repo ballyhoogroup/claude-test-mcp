@@ -796,17 +796,26 @@ function resourceMeta(resourceUri) {
 const PLACEHOLDER_IDS = new Set(["anonymous", "customer-from-your-auth", "session-from-your-auth"]);
 const PLACEHOLDER_NAMES = new Set(["customer name"]);
 
-/** Read the signed-in person from an MCP tool context. A missing name stays unset. */
+/** A verified email is the customer id. Otherwise the auth subject is used. A missing name stays unset. */
 export function identifyFromContext(context) {
   const extra = context && typeof context === "object" ? context : {};
   const authExtra = extra.authInfo?.extra && typeof extra.authInfo.extra === "object" ? extra.authInfo.extra : {};
   const meta = extra._meta && typeof extra._meta === "object" ? extra._meta : {};
   const metaUser = meta["openai/user"] && typeof meta["openai/user"] === "object" ? meta["openai/user"] : {};
   return {
-    userId: firstText([authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]),
+    userId: firstText([verifiedEmail(authExtra), authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]),
     sessionId: firstText([extra.sessionId, meta.sessionId]),
     displayName: firstText([authExtra.name, authExtra.preferred_username, metaUser.name])
   };
+}
+
+function verifiedEmail(authExtra) {
+  const verified = authExtra.emailVerified === true
+    || authExtra.email_verified === true
+    || authExtra.email_verified === "true";
+  if (!verified) return "";
+  const email = firstText([authExtra.email]).toLowerCase();
+  return email.includes("@") ? email : "";
 }
 
 function firstText(values) {

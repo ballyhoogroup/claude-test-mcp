@@ -39,7 +39,7 @@ app.get("/", (_req, res) => {
     authEnabled,
     companyAccessDefaultLimit: 10,
     supportToolNames: "vendor-answers-follow-up",
-    supportBridgeSdkVersion: "local-sha256:869fb0e83e2603c8d1191cc64ea64965ef3b76a85c34821d5674c7e8297b7c78",
+    supportBridgeSdkVersion: "local-sha256:a211c7be58993aa5b45b82fa40ab37b8d1bb77ef2b521ee4925c5ede5be2317a",
   });
 });
 

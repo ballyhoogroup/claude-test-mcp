@@ -177,7 +177,7 @@ test("company budget is shared across MCP tool calls and fresh server instances"
       assert.match(JSON.stringify(blocked), /company_limit_reached/);
       assert.doesNotMatch(JSON.stringify(blocked), /CreditBridge/);
       const revisit = await next.client.callTool({ name, arguments: { id: "co-001" } });
-      assert.notEqual(revisit.isError, true);
+      assert.notEqual(revisit.isError, true, JSON.stringify(revisit));
     }
     const search = await next.client.callTool({ name: "search", arguments: { query: "" } });
     const data = JSON.parse((search.content as Array<{ text: string }>)[0].text);
@@ -219,4 +219,21 @@ test("legacy support names are absent and cannot be called", async () => {
       assert.match(JSON.stringify(result.content), /not found/i, name);
     }
   } finally { await client.close(); await server.close(); }
+});
+
+test("vendor answer labels live contact by first name and reopens an existing conversation", async () => {
+  let payload: any = { answer: { text: "Saved answer." }, offer: { id: "offer-live", intent: "pricing", vendorName: "Pitch Fork", representativeName: "Sarah Teller" } };
+  globalThis.fetch = async () => Response.json(payload);
+  const { client, server } = await connectedClient();
+  try {
+    const result = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "What does it cost?" } });
+    assert.equal((result.structuredContent as Record<string, unknown>)?.acceptLabel, "Chat with Sarah");
+    assert.equal((result.structuredContent as Record<string, unknown>)?.chatStarted, false);
+    payload = { answer: { text: "Saved answer." }, conversation: { id: "existing-chat", representativeName: "Sarah Teller", vendorName: "Pitch Fork" } };
+    const reopened = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "What does it cost?" } });
+    assert.equal((reopened.structuredContent as Record<string, unknown>)?.chatStarted, true);
+    assert.equal((reopened.structuredContent as Record<string, unknown>)?.offered, false);
+    assert.equal((reopened.structuredContent as Record<string, unknown>)?.conversationId, "existing-chat");
+    assert.match(JSON.stringify(reopened.content), /already have a live chat/);
+  } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
 });
