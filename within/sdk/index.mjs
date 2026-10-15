@@ -47,11 +47,18 @@ const INTENT_WORDING = STANDARD_ASSISTANCE_INTENTS
   .map(intent => `${intent.label} (${intent.words.join(", ")})`)
   .join("; ");
 
-export const SERVER_INSTRUCTIONS = `Call offer_assistance when the user asks about pricing or any topic it covers. That call creates the consent card and is the answer. Search, list, and fetch return catalog records and do not create the card. The call does not contact anyone until the user agrees on the card. If a tool result includes an \`assistance\` object with a suggested message, relay that message. That offer is text, and the user replies in text. When the user accepts, call request_assistance with its offerId. When the user declines, call decline_assistance with its offerId. offer_assistance covers: ${INTENT_WORDING}.`;
+const SECURITY_CUES = intentById("security_compliance").words.join(", ");
+
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing, plans, purchasing, demos or trials, enterprise options, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing, or cancelling or downgrading before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. On a live card, point the user to the representative for a quote. On an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. When the user agrees to connect, call confirm_assistance with the offer id from that result. request_assistance, confirm_assistance, and file_escalation run only after the user explicitly chooses. offer_assistance remains available for those topics when get_vendor_answer is unavailable, and it shows a consent card without contacting anyone until the user agrees. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user. offer_assistance also covers: ${INTENT_WORDING}.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by offer_assistance.";
 
-export const OFFER_ASSISTANCE_DESCRIPTION = `Call this tool when the user asks about ${INTENT_WORDING}. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
+export const OFFER_ASSISTANCE_DESCRIPTION = `This connector has no price list. A question about its price or pricing is answered here. Shows an optional live-assistance consent card so the user can choose to chat with a representative. Use this for covered topics when get_vendor_answer is unavailable. Use when the user asks about ${INTENT_WORDING}. Displaying the card does not contact anyone. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
+
+export function vendorAnswerDescription(vendorName) {
+  const vendor = String(vendorName ?? "").trim() || "this vendor";
+  return `Use this whenever the user asks about ${vendor}'s pricing, plans, purchasing, demos or trials, enterprise options, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing, or cancelling or downgrading. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. When the card is a live offer, point the user to the representative for a quote. When the card is an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds.`;
+}
 export const CONFIRM_ASSISTANCE_DESCRIPTION = "Starts the live chat for an assistance card the user accepted. Pass the offerId from that card. Returns the conversation status.";
 export const REQUEST_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts a manual offer in text. Pass the offerId from the assistance object on the earlier tool result. Also opens the chat after the user accepts an assistance card, using the offerId from that card.";
 export const DECLINE_ASSISTANCE_DESCRIPTION = "Declines a live-assistance offer. Pass the offerId. Does not contact anyone.";
@@ -166,6 +173,237 @@ export function asyncEscalationCopy(note) {
   };
 }
 
+function answerSentences(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=[A-Z])/).map(part => part.trim()).filter(Boolean);
+}
+
+function clipDirect(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= 90) return text;
+  const cut = text.slice(0, 90);
+  const space = cut.lastIndexOf(" ");
+  return (space > 40 ? cut.slice(0, space) : cut).replace(/[.,;:]$/, "").trim();
+}
+
+export function splitVendorAnswer(text) {
+  const full = String(text ?? "").replace(/\s+/g, " ").trim();
+  const sentences = answerSentences(full);
+  const direct = clipDirect(sentences[0] || full);
+  const supporting = sentences.slice(1, 5);
+  return {
+    direct_answer: direct,
+    context: supporting.join(" "),
+    full_answer: full
+  };
+}
+
+export function nameInitials(name) {
+  const parts = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function titleCaseRole(role) {
+  return String(role ?? "").trim().split(/\s+/).filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function repCard(name, role, available) {
+  const cleaned = String(name ?? "").trim();
+  if (!cleaned) return undefined;
+  const first = cleaned.split(/\s+/)[0];
+  const titled = titleCaseRole(role);
+  return {
+    name: cleaned,
+    first_name: first,
+    role: titled,
+    title: titled,
+    initials: nameInitials(cleaned),
+    available: available === true,
+    pronoun_subject: "they",
+    pronoun_object: "them"
+  };
+}
+
+function vendorCardFields(answer, subject) {
+  const vendorName = subject.vendorName || "";
+  const intentLabel = subject.intentLabel || "";
+  const topic = subject.topic || (intentLabel ? intentLabel.toLowerCase() : "");
+  const rep = repCard(subject.representativeName, subject.representativeRole, subject.available);
+  return {
+    ...splitVendorAnswer(answer?.text ?? answer),
+    source_label: intentLabel ? `${intentLabel} docs` : "Vendor docs",
+    vendor_name: vendorName,
+    vendor_initials: nameInitials(vendorName),
+    topic,
+    ...(rep ? { rep } : {}),
+    user_question: subject.userQuestion || "",
+    offer_id: subject.offerId || ""
+  };
+}
+
+function vendorAnswerResult(payload) {
+  const answer = payload.answer && typeof payload.answer === "object" ? payload.answer : { text: String(payload.answer ?? "") };
+  if (payload.escalation && !payload.offer) {
+    const note = payload.escalation;
+    const copy = asyncEscalationCopy(note);
+    const topic = topicPhrase(note.intent, note.intentLabel);
+    const fields = vendorCardFields(answer, {
+      vendorName: note.vendorName,
+      intentId: note.intent,
+      intentLabel: note.intentLabel,
+      topic,
+      userQuestion: note.issueSummary,
+      offerId: note.id,
+      representativeName: payload.contact?.name,
+      representativeRole: payload.contact?.role,
+      available: payload.contact?.available === true
+    });
+    const known = fields.rep && fields.rep.available === false ? fields.rep : null;
+    copy.suggestedMessage = known
+      ? `${known.name} at ${note.vendorName || "the vendor"} is offline right now. You can leave them a note above and they'll follow up. In the meantime I can keep going on this.`
+      : `Nobody from ${note.vendorName || "the vendor"}'s ${topic} team is online right now. You can leave them a note above and they'll follow up. In the meantime I can keep going on this.`;
+    copy.acceptLabel = known ? `Send note to ${known.first_name}` : "Send note";
+    return {
+      content: [
+        { type: "text", text: fields.direct_answer },
+        { type: "text", text: copy.suggestedMessage }
+      ],
+      structuredContent: {
+        answer,
+        ...fields,
+        kind: "escalation",
+        assistance: { kind: "escalation", topic, ...(fields.rep ? { rep: fields.rep } : {}) },
+        escalation: note,
+        status: "awaiting_consent",
+        offered: true,
+        chatStarted: false,
+        mode: "async_note",
+        offerId: note.id,
+        offer_id: note.id,
+        escalationOfferId: note.id,
+        intent: note.intent,
+        intentLabel: note.intentLabel,
+        issueSummary: note.issueSummary,
+        vendorName: note.vendorName,
+        expiresAt: note.expiresAt,
+        ...copy
+      },
+      _meta: uiMeta(INTENT_OFFER_RESOURCE)
+    };
+  }
+  if (payload.offer?.source === "agent") {
+    const offer = payload.offer;
+    const topic = topicPhrase(offer.intent, offer.intentLabel);
+    const fields = vendorCardFields(answer, {
+      vendorName: offer.vendorName,
+      intentId: offer.intent,
+      intentLabel: offer.intentLabel,
+      topic,
+      userQuestion: offer.issueSummary,
+      offerId: offer.id,
+      available: false
+    });
+    const suggestedMessage = `Nobody from ${offer.vendorName || "the vendor"} is available. The card can open a chat with the vendor assistant. Nothing starts until the user chooses Talk to the assistant.`;
+    return {
+      content: [
+        { type: "text", text: fields.direct_answer },
+        { type: "text", text: suggestedMessage }
+      ],
+      structuredContent: {
+        answer,
+        ...fields,
+        kind: "agent",
+        assistance: { kind: "agent", topic },
+        status: "offered",
+        offered: true,
+        chatStarted: false,
+        offerId: offer.id,
+        offer_id: offer.id,
+        intent: offer.intent,
+        intentLabel: offer.intentLabel,
+        issueSummary: offer.issueSummary,
+        vendorName: offer.vendorName,
+        expiresAt: offer.expiresAt,
+        acceptTool: "talk_to_vendor_agent",
+        declineTool: "decline_assistance",
+        acceptLabel: "Talk to the assistant",
+        declineLabel: "Not now",
+        suggestedMessage
+      },
+      _meta: uiMeta(INTENT_OFFER_RESOURCE)
+    };
+  }
+  if (payload.offer) {
+    const offer = payload.offer;
+    const copy = liveOfferCopy(offer);
+    const firstName = String(offer.representativeName || "").trim().split(/\s+/)[0];
+    const topic = topicPhrase(offer.intent, offer.intentLabel);
+    copy.acceptTool = "request_assistance";
+    copy.acceptLabel = firstName ? `Ask ${firstName}` : "Chat with support";
+    copy.declineLabel = "Not now";
+    copy.suggestedMessage = firstName
+      ? `${firstName} can help with ${topic}. Answer in two or three sentences and point the user to ${firstName} for a quote.`
+      : copy.suggestedMessage;
+    const fields = vendorCardFields(answer, {
+      vendorName: offer.vendorName,
+      representativeName: offer.representativeName,
+      representativeRole: offer.representativeRole,
+      intentId: offer.intent,
+      intentLabel: offer.intentLabel,
+      topic,
+      userQuestion: offer.issueSummary,
+      offerId: offer.id,
+      available: true
+    });
+    const assistance = assistanceFromOffer(offer);
+    assistance.kind = "live";
+    assistance.topic = topic;
+    return {
+      content: [
+        { type: "text", text: fields.direct_answer },
+        { type: "text", text: copy.suggestedMessage }
+      ],
+      structuredContent: {
+        answer,
+        ...fields,
+        kind: "live",
+        assistance,
+        status: "offered",
+        offered: true,
+        chatStarted: false,
+        offerId: offer.id,
+        offer_id: offer.id,
+        intent: offer.intent,
+        intentLabel: offer.intentLabel,
+        issueSummary: offer.issueSummary,
+        representativeName: offer.representativeName,
+        representativeRole: offer.representativeRole,
+        vendorName: offer.vendorName,
+        expiresAt: offer.expiresAt,
+        ...copy
+      },
+      _meta: {
+        ...uiMeta(INTENT_OFFER_RESOURCE),
+        "supportbridge/offer": {
+          offerId: offer.id,
+          offer_id: offer.id,
+          vendorName: offer.vendorName,
+          representativeName: offer.representativeName,
+          representativeRole: offer.representativeRole
+        }
+      }
+    };
+  }
+  const spoken = splitVendorAnswer(answer.text).direct_answer || answer.text;
+  return {
+    content: [{ type: "text", text: spoken }],
+    structuredContent: { answer, full_answer: answer.text }
+  };
+}
+
 export function assistanceFromOffer(offer) {
   const assistance = { offerId: offer.id };
   if (offer.intent) assistance.intent = offer.intent;
@@ -206,6 +444,7 @@ SupportBridge.install = function install(server, options) {
   if (!options?.apiKey) throw new Error("api_key_required");
   publishServerInstructions(server);
   const baseUrl = (options.baseUrl ?? "http://127.0.0.1:8787").replace(/\/$/, "");
+  const vendorLabel = String(options.vendorName ?? "").trim() || "this vendor";
   const identify = options.identify ?? identifyFromContext;
   const appHtml = options.appHtml ?? {};
   const toolMetaByName = new Map();
@@ -228,6 +467,79 @@ SupportBridge.install = function install(server, options) {
   const chatMeta = uiMeta(CHAT_RESOURCE);
   const intentOfferMeta = uiMeta(INTENT_OFFER_RESOURCE);
   const appOnlyChatMeta = appOnlyMeta();
+
+  const answerTool = async (args, extra) => {
+    const result = await serviceFetch(baseUrl, options.apiKey, "/v1/answers", {
+      method: "POST",
+      body: {
+        ...await identityOf(identify, extra),
+        topic: args?.topic,
+        question: args?.question,
+        ...(args?.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {})
+      }
+    });
+    if (!result?.answer) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: "The vendor answer could not be loaded. No one has been contacted." }],
+        structuredContent: { status: result?.error ?? "answer_unavailable" }
+      };
+    }
+    return vendorAnswerResult(result);
+  };
+
+  server.registerTool("get_vendor_answer", {
+    title: "Vendor answer",
+    description: vendorAnswerDescription(vendorLabel),
+    inputSchema: z.object({
+      topic: z.string().min(1).max(80).describe(`The closest topic to what the user asked. Preferred ids: ${ASSISTANCE_INTENT_IDS.join(", ")}.`),
+      question: z.string().min(1).max(2_000).describe("The user's question, in a sentence or two.")
+    }).passthrough(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    _meta: intentOfferMeta
+  }, answerTool);
+
+  server.registerTool("ask_company", {
+    title: "Ask the company",
+    description: "Deprecated alias of get_vendor_answer. Maps intent to topic and issueSummary to question.",
+    inputSchema: OFFER_ASSISTANCE_INPUT,
+    _meta: intentOfferMeta
+  }, async (args, extra) => answerTool({
+    topic: args?.topic ?? args?.intent,
+    question: args?.question ?? args?.issueSummary ?? args?.issue_summary,
+    idempotencyKey: args?.idempotencyKey
+  }, extra));
+
+  server.registerTool("talk_to_vendor_agent", {
+    title: "Talk to the vendor assistant",
+    description: "Sends a message in the vendor assistant chat after the customer chooses Talk to the assistant. Pass the offer id and the message.",
+    inputSchema: z.object({
+      offerId: z.string().optional(),
+      offer_id: z.string().optional(),
+      text: z.string().max(2_000).optional()
+    }).passthrough(),
+    _meta: appOnlyMeta()
+  }, async (args, extra) => {
+    const result = await serviceFetch(baseUrl, options.apiKey, "/v1/agent-chat", {
+      method: "POST",
+      body: {
+        ...await identityOf(identify, extra),
+        offerId: normalizeOfferArgs(args).offerId,
+        text: args?.text
+      }
+    });
+    if (!result?.reply) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: "The vendor assistant could not reply. No person was contacted." }],
+        structuredContent: { status: result?.error ?? "agent_unavailable" }
+      };
+    }
+    return {
+      content: [{ type: "text", text: result.reply }],
+      structuredContent: result
+    };
+  });
 
   server.registerTool("offer_assistance", {
     title: "Pricing and commercial questions",
@@ -255,7 +567,7 @@ SupportBridge.install = function install(server, options) {
     description: "Files an async note the customer agreed to send when no representative was available. Pass the escalationOfferId from that offer. Does not start a chat.",
     inputSchema: OFFER_CONNECT_INPUT,
     _meta: appOnlyMeta()
-  }, async (args, extra) => fileEscalation(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+  }, async (args, extra) => fileEscalation(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId, args?.note));
 
   server.registerTool("decline_escalation", {
     title: "Decline escalation",
@@ -267,6 +579,32 @@ SupportBridge.install = function install(server, options) {
   server.registerTool("decline_assistance", {
     title: "Decline assistance",
     description: DECLINE_ASSISTANCE_DESCRIPTION,
+    inputSchema: OFFER_CONNECT_INPUT
+  }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+
+  server.registerTool("accept_invitation", {
+    title: "Accept invitation",
+    description: "Deprecated alias of request_assistance.",
+    inputSchema: OFFER_CONNECT_INPUT,
+    _meta: chatMeta
+  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+
+  server.registerTool("request_person", {
+    title: "Request a person",
+    description: "Deprecated alias of request_assistance.",
+    inputSchema: OFFER_CONNECT_INPUT,
+    _meta: chatMeta
+  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+
+  server.registerTool("leave_note", {
+    title: "Leave a note",
+    description: "Deprecated alias of file_escalation.",
+    inputSchema: OFFER_CONNECT_INPUT
+  }, async (args, extra) => fileEscalation(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId, args?.note));
+
+  server.registerTool("decline_invitation", {
+    title: "Decline invitation",
+    description: "Deprecated alias of decline_assistance.",
     inputSchema: OFFER_CONNECT_INPUT
   }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
   server.registerTool("support_get_messages", {
@@ -687,7 +1025,7 @@ async function declineOffer(baseUrl, apiKey, identity, offerId) {
   };
 }
 
-async function fileEscalation(baseUrl, apiKey, identity, escalationId) {
+async function fileEscalation(baseUrl, apiKey, identity, escalationId, note) {
   if (!escalationId) {
     return {
       content: [{ type: "text", text: "An escalation offer id is required to send the note." }],
@@ -696,7 +1034,7 @@ async function fileEscalation(baseUrl, apiKey, identity, escalationId) {
   }
   const result = await serviceFetch(baseUrl, apiKey, `/v1/escalations/${encodeURIComponent(escalationId)}/file`, {
     method: "POST",
-    body: identity
+    body: { ...identity, ...(note ? { note: String(note).slice(0, 2000) } : {}) }
   });
   if (result?.escalation?.status === "pending") {
     return {
@@ -1150,14 +1488,159 @@ body.sb-chat-mode{
   background:#FAFAF7;color:#1C1C19;
   font:400 14px/20px Inter,"Segoe UI",system-ui,sans-serif;
 }
-body.sb-chat-mode #offer-root{display:none}
+body.sb-chat-mode #offer-root,body.sb-chat-mode #vendor-card{display:none}
 body.sb-chat-mode #chat-root{
   display:flex;flex-direction:column;flex:1;height:520px;min-height:520px;overflow:hidden;
 }
 ${chatPanelStyles()}
 :where(button):focus-visible{outline:2px solid #2F7D4F;outline-offset:2px}
+#offer-root[hidden]{display:none}
+#vendor-card{
+  --va-bg:#fff; --va-text:#1f2a24; --va-muted:#6b776f; --va-border:#e3e6e4; --va-offer:#f3f8f5; --va-green:#176b43; --va-on:#fff;
+  display:block; width:100%; overflow:hidden; border:1px solid #e3e6e4; border-radius:12px;
+  background:#fff; color:#1f2a24;
+  font:400 14px/21px system-ui,"Segoe UI",sans-serif;
+  box-shadow:0 1px 2px rgba(20,30,25,.06);
+}
+#vendor-card[hidden]{display:none}
+.va-head{
+  display:flex; align-items:center; justify-content:space-between; gap:16px; height:44px; margin:0; padding:0 24px;
+  background:#fafbfa; border-bottom:1px solid #eceeed;
+}
+.va-brand{display:flex; align-items:center; gap:8px; min-width:0}
+.va-badge{
+  display:grid; place-items:center; width:22px; height:22px; border-radius:6px; background:#176b43; color:#fff;
+  font:600 11px/1 system-ui,"Segoe UI",sans-serif;
+}
+.va-brand strong{font:600 14px/20px system-ui,"Segoe UI",sans-serif}
+.va-kicker{color:#6b776f; font:400 13px/18px system-ui,"Segoe UI",sans-serif}
+.va-source{display:flex; align-items:center; gap:6px; margin:0; color:#6b776f; font:400 13px/18px system-ui,"Segoe UI",sans-serif; white-space:nowrap}
+.va-source svg{flex:none}
+.va-answer{display:flex; flex-direction:column; gap:10px; padding:16px 24px 18px}
+#va-direct{margin:0; color:#1f2a24; font:600 15px/22px system-ui,"Segoe UI",sans-serif}
+#va-direct[hidden]{display:none}
+#va-context,#va-full{margin:0; color:#3d4a43; font:400 14px/21px system-ui,"Segoe UI",sans-serif; overflow-wrap:normal; word-break:normal}
+#va-context{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden}
+#va-context.is-open{display:block; -webkit-line-clamp:unset; overflow:visible}
+#va-context[hidden],#va-full[hidden],#va-more[hidden]{display:none}
+#va-more{
+  display:inline-flex; align-items:center; gap:4px; margin:0; padding:0; border:0; background:transparent;
+  color:#176b43; font:500 13px/18px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+}
+.va-offer{
+  display:flex; flex-direction:column; gap:12px; margin:0; padding:16px 24px 18px; border-top:1px solid #eceeed;
+  background:#f3f8f5;
+}
+.va-offer.is-note{background:#f6f6f3}
+.va-offer[hidden]{display:none}
+.va-rep{display:flex; align-items:flex-start; gap:12px}
+.va-avatar-wrap{position:relative; flex:none; width:40px; height:40px}
+.va-avatar{
+  display:grid; place-items:center; width:40px; height:40px; border-radius:20px; background:#d9e9df; color:#176b43;
+  font:600 14px/1 system-ui,"Segoe UI",sans-serif;
+}
+.va-offer.is-note .va-avatar{background:#e6e8e3; color:#4f5d56}
+.va-offer.is-note .va-avatar.has-initials{color:#5c6962}
+#va-bubble{display:none}
+.va-offer.is-note .va-avatar:not(.has-initials) #va-bubble{display:block}
+.va-dot{
+  position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border:2px solid #f3f8f5; border-radius:6px; background:#1f9d5a;
+}
+.va-dot.is-offline{background:#fff; border:2px solid #9aa49e}
+.va-dot[hidden]{display:none}
+#va-rep-heading{margin:0; color:#1f2a24; font:600 15px/22px system-ui,"Segoe UI",sans-serif}
+#va-rep-sub{margin:2px 0 0; color:#4f5d56; font:400 13px/18px system-ui,"Segoe UI",sans-serif}
+.va-question{margin:0; padding:9px 12px; border:1px solid #dfe8e2; border-radius:8px; background:#fff}
+.va-question[hidden]{display:none}
+.va-offer.is-note .va-question{display:none}
+#va-question-label{color:#6b776f; letter-spacing:.06em; font:600 11px/21px system-ui,"Segoe UI",sans-serif}
+#va-question-text{color:#1f2a24; font:italic 400 14px/21px system-ui,"Segoe UI",sans-serif}
+.va-note{display:none}
+.va-offer.is-note .va-note{display:block}
+.va-note[hidden],.va-offer.is-note .va-note[hidden]{display:none}
+#va-eyebrow{display:none; margin:0 0 2px; color:#6b776f; letter-spacing:.06em; font:600 11px/16px system-ui,"Segoe UI",sans-serif}
+.va-offer.is-note #va-eyebrow,.va-offer.is-agent #va-eyebrow{display:block}
+#va-eyebrow[hidden]{display:none}
+#va-note-label{display:block; margin:0 0 6px; color:#6b776f; letter-spacing:.06em; font:600 11px/16px system-ui,"Segoe UI",sans-serif}
+#va-note-text{
+  display:block; width:100%; height:64px; max-height:160px; box-sizing:border-box; resize:vertical;
+  padding:9px 12px; border:1px solid #dfe3dd; border-radius:8px; background:#fff; color:#1f2a24;
+  font:400 14px/21px system-ui,"Segoe UI",sans-serif;
+}
+#va-helper{margin:8px 0 0; color:#6b776f; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+.va-actions{display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0}
+#va-accept{
+  display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 18px; border:0; border-radius:8px; background:#176b43; color:#fff;
+  font:600 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+}
+#va-plane{display:block}
+#va-decline{
+  height:40px; padding:0 12px; border:0; background:transparent; color:#3d4a43;
+  font:500 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+}
+#va-accept:disabled,#va-decline:disabled{opacity:.5; cursor:not-allowed}
+#va-privacy{display:flex; align-items:center; gap:6px; margin:0 0 0 auto; color:#4f5d56; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+#va-status{margin:0; color:#4f5d56; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+#va-status:empty{display:none}
+#va-status.error{color:#A32D2D}
+#va-agent[hidden]{display:none}
+#va-agent{display:flex; flex-direction:column; gap:10px; margin-top:4px}
+#va-agent-log{display:flex; flex-direction:column; gap:8px}
+.va-agent-line{margin:0}
+.va-agent-line.user{align-self:flex-end; max-width:92%}
+#va-agent-form{display:flex; gap:8px}
+#va-agent-form label{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)}
+#va-agent-input{flex:1; min-width:0; height:40px; margin:0; padding:0 10px; border:1px solid #e3e6e4; border-radius:8px; font:400 14px/20px system-ui,"Segoe UI",sans-serif}
+#va-agent-send{height:40px; margin:0; padding:0 14px; border:1px solid #176b43; border-radius:8px; background:#176b43; color:#fff; font:500 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer}
+#va-agent-foot{margin:0; color:#6b776f; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
 </style></head>
 <body${startInChat ? ' class="sb-chat-mode"' : ""}>
+  <article id="vendor-card" hidden>
+    <header class="va-head">
+      <div class="va-brand">
+        <span id="va-vendor-badge" class="va-badge"></span>
+        <strong id="va-vendor-name"></strong>
+        <span class="va-kicker">Vendor answer</span>
+      </div>
+      <p id="va-source" class="va-source"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.2L13 5.3V14a.5.5 0 0 1-.5.5h-8A.5.5 0 0 1 4 14Z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9 1.8V5h3.2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><span id="va-source-text"></span></p>
+    </header>
+    <div class="va-answer">
+      <p id="va-direct"></p>
+      <p id="va-context"></p>
+      <button id="va-more" type="button" hidden>Show full answer <svg width="13" height="13" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.2 6 8l4-3.8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button>
+    </div>
+    <section id="va-offer" class="va-offer" hidden>
+      <div class="va-rep">
+        <span class="va-avatar-wrap"><span id="va-avatar" class="va-avatar"><span id="va-initials"></span><svg id="va-bubble" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.2 4.2h11.6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.4L5 14.6V12.2H3.2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><span id="va-dot" class="va-dot" hidden></span></span>
+        <div>
+          <p id="va-eyebrow" hidden>HUMAN FOLLOW-UP</p>
+          <h2 id="va-rep-heading"></h2>
+          <p id="va-rep-sub"></p>
+        </div>
+      </div>
+      <div id="va-question" class="va-question" hidden><span id="va-question-label"></span><em id="va-question-text"></em></div>
+      <div id="va-note" class="va-note" hidden>
+        <label id="va-note-label" for="va-note-text">YOUR NOTE, EDIT IF YOU LIKE</label>
+        <textarea id="va-note-text"></textarea>
+        <p id="va-helper"></p>
+      </div>
+      <div class="va-actions">
+        <button id="va-accept" type="button"><svg id="va-plane" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 7.3 14.6 1.6 9.6 14.4 7.5 8.7Z" fill="currentColor"/></svg><span id="va-accept-label">Chat with support</span></button>
+        <button id="va-decline" type="button">Not now</button>
+        <p id="va-privacy"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><rect x="3" y="6" width="8" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 6V4.2a2 2 0 0 1 4 0V6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><span id="va-privacy-text"></span></p>
+      </div>
+      <p id="va-status" role="status"></p>
+      <div id="va-agent" hidden>
+        <div id="va-agent-log"></div>
+        <form id="va-agent-form">
+          <label for="va-agent-input">Follow-up</label>
+          <input id="va-agent-input" type="text" maxlength="2000" placeholder="Ask a follow-up">
+          <button id="va-agent-send" type="submit">Send</button>
+        </form>
+        <p id="va-agent-foot">A person is not in this chat.</p>
+      </div>
+    </section>
+  </article>
   <section id="offer-root" class="card" aria-labelledby="offer-title">
     <p class="eyebrow" id="eyebrow">Support available</p>
     <h1 id="offer-title">Support is available to review this result. Would you like to connect?</h1>
@@ -1188,6 +1671,42 @@ const actionsEl=document.getElementById("actions");
 const statusEl=document.getElementById("status");
 const acceptEl=document.getElementById("accept");
 const declineEl=document.getElementById("decline");
+const offerRootEl=document.getElementById("offer-root");
+const vaCard=document.getElementById("vendor-card");
+const vaVendorBadge=document.getElementById("va-vendor-badge");
+const vaVendorName=document.getElementById("va-vendor-name");
+const vaSourceText=document.getElementById("va-source-text");
+const vaDirect=document.getElementById("va-direct");
+const vaContext=document.getElementById("va-context");
+const vaMore=document.getElementById("va-more");
+const vaOffer=document.getElementById("va-offer");
+const vaAvatar=document.getElementById("va-avatar");
+const vaInitials=document.getElementById("va-initials");
+const vaDot=document.getElementById("va-dot");
+const vaEyebrow=document.getElementById("va-eyebrow");
+const vaRepHeading=document.getElementById("va-rep-heading");
+const vaRepSub=document.getElementById("va-rep-sub");
+const vaQuestion=document.getElementById("va-question");
+const vaQuestionLabel=document.getElementById("va-question-label");
+const vaQuestionText=document.getElementById("va-question-text");
+const vaNote=document.getElementById("va-note");
+const vaNoteLabel=document.getElementById("va-note-label");
+const vaNoteText=document.getElementById("va-note-text");
+const vaHelper=document.getElementById("va-helper");
+const vaAccept=document.getElementById("va-accept");
+const vaAcceptLabel=document.getElementById("va-accept-label");
+const vaDecline=document.getElementById("va-decline");
+const vaPrivacyText=document.getElementById("va-privacy-text");
+const vaStatus=document.getElementById("va-status");
+const vaAgent=document.getElementById("va-agent");
+const vaAgentLog=document.getElementById("va-agent-log");
+const vaAgentForm=document.getElementById("va-agent-form");
+const vaAgentInput=document.getElementById("va-agent-input");
+let vaShort="";
+let vaFull="";
+let vaContextText="";
+let vaExpanded=false;
+let vaUserQuestion="";
 function resultBags(result){
   if(!result||typeof result!=="object")return [];
   return [result.structuredContent,result.toolOutput,result.toolResponseMetadata,result.result,result].filter(bag=>bag&&typeof bag==="object");
@@ -1223,6 +1742,15 @@ function mountChat(payload){
 }
 function apply(data){
   const payload=flattenAssistance(data||{});
+  if(payload.direct_answer){
+    renderVendor(payload);
+    if(conversationIdOf(payload)&&(chatStartedOf(payload)||(payload.conversation&&payload.conversation.id))){
+      mountChat(mountPayload(payload));
+    }
+    return;
+  }
+  if(vaCard) vaCard.hidden=true;
+  if(offerRootEl) offerRootEl.hidden=false;
   if(conversationIdOf(payload)&&(chatStartedOf(payload)||Array.isArray(payload.messages)||(payload.conversation&&payload.conversation.id))){
     mountChat(mountPayload(payload));
     return;
@@ -1276,8 +1804,105 @@ function apply(data){
 }
 function setBusy(busy){
   pendingAction=busy;
-  acceptEl.disabled=busy||settled||offerClosed||!offerId;
-  declineEl.disabled=busy||settled||offerClosed||!offerId;
+  const locked=busy||settled||offerClosed||!offerId;
+  acceptEl.disabled=locked;
+  declineEl.disabled=locked;
+  if(vaAccept) vaAccept.disabled=locked;
+  if(vaDecline) vaDecline.disabled=locked;
+}
+function renderVendor(payload){
+  offerRootEl.hidden=true;
+  vaCard.hidden=false;
+  const rep=payload.rep&&typeof payload.rep==="object"?payload.rep:{};
+  const vendorName=payload.vendor_name||payload.vendorName||"";
+  vaVendorBadge.textContent=payload.vendor_initials||"";
+  vaVendorName.textContent=vendorName;
+  vaSourceText.textContent=payload.source_label||"Vendor docs";
+  vaShort=payload.direct_answer||"";
+  vaContextText=payload.context||"";
+  vaFull=payload.full_answer||vaShort;
+  vaExpanded=false;
+  vaDirect.hidden=false;
+  vaDirect.textContent=vaShort;
+  vaContext.classList.remove("is-open");
+  vaContext.hidden=!vaContextText;
+  vaContext.textContent=vaContextText;
+  vaMore.hidden=vaFull.length<=vaShort.length;
+  vaMore.firstChild.textContent="Show full answer ";
+  offerId=payload.offer_id||payload.offerId||payload.escalationOfferId||"";
+  if(payload.acceptTool) acceptTool=payload.acceptTool;
+  if(payload.declineTool) declineTool=payload.declineTool;
+  const assistance=payload.assistance&&typeof payload.assistance==="object"?payload.assistance:{};
+  const kind=assistance.kind||payload.kind||(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation");
+  const note=kind==="escalation"&&Boolean(offerId);
+  vaOffer.classList.toggle("is-note", note);
+  vaOffer.classList.toggle("is-agent", kind==="agent");
+  vaOffer.hidden=!offerId;
+  const topic=payload.topic||String(payload.intentLabel||"this").toLowerCase();
+  vaUserQuestion=payload.user_question||"";
+  vaAgent.hidden=true;
+  vaAccept.hidden=false;
+  vaDecline.hidden=false;
+  if(kind==="agent"){
+    vaEyebrow.hidden=false;
+    vaEyebrow.textContent="VENDOR ASSISTANT";
+    vaNote.hidden=true;
+    vaQuestion.hidden=true;
+    vaAvatar.classList.add("has-initials");
+    vaInitials.textContent=payload.vendor_initials||"A";
+    vaDot.hidden=true;
+    vaRepHeading.textContent="Vendor assistant";
+    vaRepSub.textContent="No one from the team is taking this. The assistant answers from the saved context.";
+    vaAcceptLabel.textContent=payload.acceptLabel||"Talk to the assistant";
+    vaDecline.textContent=payload.declineLabel||"Not now";
+    vaPrivacyText.textContent="Nothing starts until you choose Talk to the assistant.";
+  }else if(note){
+    const first=rep.first_name||String(rep.name||"").split(" ")[0];
+    const known=Boolean(rep.name)&&rep.available===false;
+    vaEyebrow.hidden=false;
+    vaEyebrow.textContent="HUMAN FOLLOW-UP";
+    vaNote.hidden=false;
+    vaQuestion.hidden=true;
+    vaAvatar.classList.toggle("has-initials", known);
+    vaInitials.textContent=known?(rep.initials||""):"";
+    vaDot.hidden=!known;
+    vaDot.classList.toggle("is-offline", known);
+    vaRepHeading.textContent=known?("Leave "+rep.name+" a note about "+topic):("Ask "+(vendorName||"the vendor")+" about "+topic);
+    vaRepSub.textContent=known
+      ?(first+" is your account contact at "+(vendorName||"the vendor")+". They're offline right now and usually replies by the next business day.")
+      :("No one on the "+topic+" team is online right now. They usually reply within a business day.");
+    vaNoteLabel.textContent=known?("YOUR NOTE TO "+first.toUpperCase()+", EDIT IF YOU LIKE"):"YOUR NOTE, EDIT IF YOU LIKE";
+    if(document.activeElement!==vaNoteText) vaNoteText.value=payload.user_question||"";
+    vaHelper.textContent=known
+      ?(first+" sees this note and your name from this session. They don't see the rest of your chat.")
+      :((vendorName||"The vendor")+" sees this note and your name from this session. They don't see the rest of your chat.");
+    vaAcceptLabel.textContent=payload.acceptLabel||(known?"Send note to "+first:"Send note");
+    vaDecline.textContent=payload.declineLabel||"No thanks";
+    vaPrivacyText.textContent="Nothing is sent until you choose Send note";
+  }else{
+    vaEyebrow.hidden=true;
+    vaNote.hidden=true;
+    vaAvatar.classList.add("has-initials");
+    vaInitials.textContent=rep.initials||payload.vendor_initials||"";
+    vaDot.hidden=rep.available!==true;
+    vaDot.classList.remove("is-offline");
+    const first=rep.first_name||String(rep.name||"").split(" ")[0];
+    const ask=payload.acceptLabel||(first?"Ask "+first:"Chat with support");
+    vaAcceptLabel.textContent=ask;
+    vaDecline.textContent=payload.declineLabel||"Not now";
+    vaPrivacyText.textContent="Nothing is sent until you choose "+ask+".";
+    vaRepHeading.textContent=rep.name?rep.name+" can help with "+topic:(payload.cardTitle||"Support can help with "+topic);
+    const role=rep.role||rep.title||"";
+    const place=role?role+" at "+(vendorName||"the vendor"):(vendorName||"");
+    const presence=rep.available===true?"Online now":"";
+    vaRepSub.textContent=[place,presence].filter(Boolean).join(". ")+(place||presence?".":"");
+    const question=payload.user_question||"";
+    vaQuestion.hidden=!question;
+    vaQuestionLabel.textContent=(first||"SUPPORT").toUpperCase()+" WILL SEE";
+    vaQuestionText.textContent=question?'"'+question+'"':"";
+  }
+  if(!pendingAction) setBusy(false);
+  fitFrame();
 }
 function acceptFailed(status,message){
   const terminal=status==="offer_expired"||status==="offer_not_active"||status==="offer_not_found";
@@ -1363,6 +1988,149 @@ declineEl.onclick=async()=>{
   }catch(error){
     statusEl.classList.add("error");
     statusEl.textContent=error.message||"Could not decline this offer.";
+    setBusy(false);
+  }
+};
+vaMore.onclick=()=>{
+  vaExpanded=!vaExpanded;
+  if(vaExpanded){
+    vaDirect.hidden=true;
+    vaContext.hidden=false;
+    vaContext.classList.add("is-open");
+    vaContext.textContent=vaFull;
+    vaMore.firstChild.textContent="Show less ";
+  }else{
+    vaDirect.hidden=false;
+    vaContext.classList.remove("is-open");
+    vaContext.hidden=!vaContextText;
+    vaContext.textContent=vaContextText;
+    vaMore.firstChild.textContent="Show full answer ";
+  }
+  fitFrame();
+};
+async function sendAgent(text){
+  const cleaned=String(text||"").trim();
+  if(!cleaned){
+    vaStatus.classList.add("error");
+    vaStatus.textContent="Type a message first.";
+    setBusy(false);
+    return;
+  }
+  const result=await callTool("talk_to_vendor_agent",{offer_id:offerId,offerId:offerId,text:cleaned});
+  const payload=mountPayload(result);
+  const messages=Array.isArray(payload.messages)?payload.messages:[];
+  if(!messages.length){
+    vaStatus.classList.add("error");
+    vaStatus.textContent="Could not reach the assistant.";
+    setBusy(false);
+    return;
+  }
+  vaAgentLog.replaceChildren();
+  for(const message of messages){
+    const line=document.createElement("p");
+    line.className="va-agent-line"+(message.role==="user"?" user":"");
+    line.textContent=(message.role==="user"?"You: ":"Assistant: ")+String(message.text||"");
+    vaAgentLog.append(line);
+  }
+  vaAgent.hidden=false;
+  vaAccept.hidden=true;
+  vaDecline.hidden=true;
+  vaQuestion.hidden=true;
+  vaNote.hidden=true;
+  vaPrivacyText.textContent="";
+  vaStatus.classList.remove("error");
+  vaStatus.textContent=payload.configured===false?"Repeating the saved answer. No model key is set on this service.":"";
+  vaAgentInput.value="";
+  settled=false;
+  offerClosed=false;
+  setBusy(false);
+  fitFrame();
+}
+vaAccept.onclick=async()=>{
+  if(!offerId||settled||pendingAction||offerClosed)return;
+  setBusy(true);
+  vaStatus.classList.remove("error");
+  vaStatus.textContent=acceptTool==="file_escalation"?"Sending…":"Connecting…";
+  try{
+    if(acceptTool==="talk_to_vendor_agent"){
+      vaAgent.hidden=false;
+      vaAccept.hidden=true;
+      vaDecline.hidden=true;
+      vaPrivacyText.textContent="";
+      vaStatus.textContent="";
+      setBusy(false);
+      vaAgentInput.focus();
+      fitFrame();
+      return;
+    }
+    const args={offer_id:offerId,offerId:offerId};
+    if(acceptTool==="file_escalation") args.note=vaNoteText.value.trim();
+    const result=await callTool(acceptTool,args);
+    if(acceptTool==="file_escalation"){
+      const filed=statusOf(result);
+      if(filed==="pending"){
+        settled=true;
+        offerClosed=true;
+        vaRepHeading.textContent=sentTitle||"Sent.";
+        vaQuestion.hidden=true;
+        vaNote.hidden=true;
+        vaAccept.hidden=true;
+        vaDecline.hidden=true;
+        vaPrivacyText.textContent="";
+        vaStatus.textContent="";
+        setBusy(true);
+        fitFrame();
+        return;
+      }
+      vaStatus.classList.add("error");
+      vaStatus.textContent=filed==="escalation_expired"?"This note offer has expired. Ask again if you still want to send it.":"Could not send this note.";
+      setBusy(false);
+      return;
+    }
+    const conversationId=conversationIdOf(result);
+    if(chatStartedOf(result)&&conversationId){
+      mountChat(Object.assign(mountPayload(result),{conversationId:conversationId,chatStarted:true}));
+      return;
+    }
+    vaStatus.classList.add("error");
+    vaStatus.textContent="Could not start this chat.";
+    setBusy(false);
+  }catch(error){
+    vaStatus.classList.add("error");
+    vaStatus.textContent=error.message||"Could not start this chat.";
+    setBusy(false);
+  }
+};
+vaDecline.onclick=async()=>{
+  if(!offerId||settled||pendingAction||offerClosed)return;
+  setBusy(true);
+  vaStatus.classList.remove("error");
+  vaStatus.textContent="Declining…";
+  try{
+    await callTool(declineTool,{offer_id:offerId,offerId:offerId});
+    settled=true;
+    offerClosed=true;
+    stopPolling();
+    vaStatus.textContent=declineTool==="decline_escalation"?"Not sent.":"Declined. No one was contacted.";
+    vaAccept.disabled=true;
+    vaDecline.disabled=true;
+  }catch(error){
+    vaStatus.classList.add("error");
+    vaStatus.textContent=error.message||"Could not decline this offer.";
+    setBusy(false);
+  }
+};
+vaAgentForm.onsubmit=async(event)=>{
+  event.preventDefault();
+  if(!offerId||pendingAction)return;
+  setBusy(true);
+  vaStatus.classList.remove("error");
+  vaStatus.textContent="Sending…";
+  try{
+    await sendAgent(vaAgentInput.value);
+  }catch(error){
+    vaStatus.classList.add("error");
+    vaStatus.textContent=error.message||"Could not reach the assistant.";
     setBusy(false);
   }
 };

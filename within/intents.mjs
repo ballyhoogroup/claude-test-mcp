@@ -56,21 +56,27 @@ export function normalizeOfferArgs(args = {}) {
   return { offerId };
 }
 
-function resolveAssistanceIntent(rawIntent, haystack) {
-  const normalized = rawIntent.toLowerCase().replace(/[\s-]+/g, "_");
+/** Known topic id, or null when the phrase does not match the catalog. */
+export function matchAssistanceIntent(rawIntent, haystack = "") {
+  const normalized = String(rawIntent ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  const blob = String(haystack ?? "").toLowerCase();
   if (intentById(normalized)) return normalized;
 
-  if (/\b(pric|plan|cost|discount|quote)\b/.test(haystack) || /pric|plan|cost|discount/.test(normalized)) return "pricing";
-  if (/\b(purchas|buy|procure|contract|sales)\b/.test(haystack) || /purchas|buy|procure/.test(normalized)) return "purchase";
-  if (/\b(demo|pilot|trial|evaluat|walkthrough)\b/.test(haystack) || /demo|pilot|trial/.test(normalized)) return "demo_or_pilot";
-  if (/\b(enterprise|volume|sla)\b/.test(haystack) || /enterprise/.test(normalized)) return "enterprise";
-  if (/\b(implement|onboard|migrat|train|professional.?service)\b/.test(haystack) || /implement|onboard/.test(normalized)) return "implementation";
-  if (/\b(secur|complian|soc|hipaa|gdpr|sso|dpa)\b/.test(haystack) || /secur|complian/.test(normalized)) return "security_compliance";
-  if (/\b(bill|invoice|refund|tax|payment)\b/.test(haystack) || /bill|invoice|payment/.test(normalized)) return "billing_payment";
-  if (/\b(cancel|downgrad|close.?account|churn)\b/.test(haystack) || /cancel|downgrad/.test(normalized)) return "cancellation_downgrade";
-  if (/\b(support|talk|speak|chat|help|human|representative|agent|person)\b/.test(haystack) || /support|talk|help/.test(normalized)) {
+  if (/\b(pric|plan|cost|discount|quote)\b/.test(blob) || /pric|plan|cost|discount/.test(normalized)) return "pricing";
+  if (/\b(purchas|buy|procure|contract|sales)\b/.test(blob) || /purchas|buy|procure/.test(normalized)) return "purchase";
+  if (/\b(demo|pilot|trial|evaluat|walkthrough)\b/.test(blob) || /demo|pilot|trial/.test(normalized)) return "demo_or_pilot";
+  if (/\b(enterprise|volume|sla)\b/.test(blob) || /enterprise/.test(normalized)) return "enterprise";
+  if (/\b(implement|onboard|migrat|train|professional.?service)\b/.test(blob) || /implement|onboard/.test(normalized)) return "implementation";
+  if (/secur|complian|encrypt|privacy|certif|\baudit|penet|residenc|\bmfa\b|questionnaire|subprocessor|vulnerab|\bsoc\b|hipaa|gdpr|\bsso\b|\bdpa|access control|data residency|iso\s*27001/.test(`${normalized} ${blob}`)) return "security_compliance";
+  if (/\b(bill|invoice|refund|tax|payment)\b/.test(blob) || /bill|invoice|payment/.test(normalized)) return "billing_payment";
+  if (/\b(cancel|downgrad|close.?account|churn)\b/.test(blob) || /cancel|downgrad/.test(normalized)) return "cancellation_downgrade";
+  if (/\b(support|talk|speak|chat|help|human|representative|agent|person)\b/.test(blob) || /support|talk|help/.test(normalized)) {
     return "purchase";
   }
-  return ASSISTANCE_INTENT_IDS[0];
+  return null;
+}
+
+function resolveAssistanceIntent(rawIntent, haystack) {
+  return matchAssistanceIntent(rawIntent, haystack) ?? ASSISTANCE_INTENT_IDS[0];
 }
 

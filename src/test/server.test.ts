@@ -21,11 +21,13 @@ async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
 test("exposes the business tools and SDK-managed assistance tools", async () => {
   const { client, server } = await connectedClient();
   try {
-    assert.match(client.getInstructions() ?? "", /Call offer_assistance when the user asks about pricing/);
+    assert.match(client.getInstructions() ?? "", /Call get_vendor_answer for pricing/);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
-    assert.doesNotMatch(client.getInstructions() ?? "", /ask_company|get_vendor_answer|Company questions|no public price list/i);
+    assert.doesNotMatch(client.getInstructions() ?? "", /ask_company|Company questions|Call offer_assistance when the user asks/i);
     const tools = await client.listTools();
     const expectedSupport = new Map([
+      ["get_vendor_answer", "Vendor answer"],
+      ["talk_to_vendor_agent", "Talk to the vendor assistant"],
       ["offer_assistance", "Pricing and commercial questions"],
       ["confirm_assistance", "Confirm assistance"],
       ["request_assistance", "Request assistance"],
@@ -47,6 +49,8 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
       assert.match(tools.tools.find(tool => tool.name === name)?.description ?? "", /Pitch Fork/);
     }
+    assert.ok(tools.tools.every(tool => !tool.description?.startsWith("Deprecated")));
+    assert.match(tools.tools.find(tool => tool.name === "get_vendor_answer")?.description ?? "", /Pitch Fork/);
     const resources = await client.listResources();
     assert.deepEqual(resources.resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
   } finally {
@@ -179,4 +183,25 @@ test("company budget is shared across MCP tool calls and fresh server instances"
     const data = JSON.parse((search.content as Array<{ text: string }>)[0].text);
     assert.equal(data.results.length, 10);
   } finally { await next.client.close(); await next.server.close(); }
+});
+
+test("vendor answers use the signed-in identity and answers endpoint without starting contact", async () => {
+  const calls: Array<{ url: string; body: any }> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : {} });
+    return Response.json({ answer: { text: "Contact Pitch Fork for a tailored quote." } });
+  };
+  const { client, server } = await connectedClient("answer-test-user");
+  try {
+    const result = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "What plans are available?" } });
+    assert.notEqual(result.isError, true);
+    assert.match(JSON.stringify(result.content), /tailored quote/);
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].url.endsWith("/v1/answers"));
+    assert.equal(calls[0].body.customerUserId, "answer-test-user");
+    assert.equal(calls[0].body.topic, "pricing");
+  } finally {
+    globalThis.fetch = async () => Response.json({});
+    await client.close(); await server.close();
+  }
 });
