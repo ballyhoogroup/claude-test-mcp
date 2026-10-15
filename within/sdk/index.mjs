@@ -34,6 +34,12 @@ const OFFER_CONNECT_INPUT = z.object({
   offerId: looseField("Offer id (camelCase). Same as offer_id.")
 }).passthrough();
 
+const AGENT_CHAT_INPUT = z.object({
+  offer_id: looseField("Offer id from the vendor assistant card"),
+  offerId: looseField("Offer id (camelCase). Same as offer_id."),
+  text: looseField("The customer's message to the vendor assistant")
+}).passthrough();
+
 /** Loose offer_assistance schema: synonyms, missing summary, and extras (name/email) are fine. */
 const OFFER_ASSISTANCE_INPUT = z.object({
   intent: looseField(`Business intent id or free text. Preferred ids: ${ASSISTANCE_INTENT_IDS.join(", ")}. Synonyms like Pricing or support are accepted.`),
@@ -63,6 +69,11 @@ export const OFFER_ASSISTANCE_DESCRIPTION = `Fallback when ask_company is unavai
 export function offerAssistanceDescription(vendorName) {
   const company = String(vendorName || "").trim();
   return company ? `${OFFER_ASSISTANCE_DESCRIPTION} Company: ${company}.` : OFFER_ASSISTANCE_DESCRIPTION;
+}
+
+export function talkToVendorAgentDescription(vendorName) {
+  const company = String(vendorName || "").trim() || "the company";
+  return `Talk with ${company}'s vendor assistant after the customer chooses Talk to the assistant. Pass offerId and text. A person is not contacted.`;
 }
 
 export const CONFIRM_ASSISTANCE_DESCRIPTION = "Starts the live chat for an assistance card the user accepted. Pass the offerId from that card. Returns the conversation status.";
@@ -139,6 +150,22 @@ export function liveOfferCopy(offer) {
   };
 }
 
+function agentOfferCopy(offer) {
+  const company = offer.vendorName || "the company";
+  return {
+    kind: "agent",
+    acceptTool: "talk_to_vendor_agent",
+    declineTool: "decline_invitation",
+    acceptLabel: "Talk to the assistant",
+    declineLabel: "Not now",
+    suggestedMessage: `Nobody from ${company} is available. The card can open a chat with the vendor assistant. Nothing starts until the user chooses Talk to the assistant.`,
+    cardEyebrow: "VENDOR ASSISTANT",
+    cardTitle: "Talk with the vendor assistant?",
+    cardNote: offer.answer || "The assistant answers from the company's saved reply.",
+    cardEyebrowTone: "neutral"
+  };
+}
+
 const DRAFT_ASK = {
   pricing: "Can you share current plans and rates?",
   purchase: "Can you help them with a purchase?",
@@ -159,6 +186,227 @@ export function assistanceDraft(note) {
     ? (DRAFT_ASK[note.intent] || "Can you follow up?")
     : (/[.?!]$/.test(summary) ? summary : `${summary}.`);
   return `A customer is asking about ${topic} for the ${vendor} connector. ${ask}`;
+}
+
+function answerSentences(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=[A-Z])/).map(part => part.trim()).filter(Boolean);
+}
+
+function clipDirect(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= 90) return text;
+  const cut = text.slice(0, 90);
+  const space = cut.lastIndexOf(" ");
+  return (space > 40 ? cut.slice(0, space) : cut).replace(/[.,;:]$/, "").trim();
+}
+
+export function splitVendorAnswer(text) {
+  const full = String(text ?? "").replace(/\s+/g, " ").trim();
+  const sentences = answerSentences(full);
+  const direct = clipDirect(sentences[0] || full);
+  const supporting = sentences.filter(sentence => sentence !== direct && !direct.includes(sentence));
+  return {
+    direct_answer: direct,
+    context: supporting.join(" "),
+    full_answer: full
+  };
+}
+
+export function nameInitials(name) {
+  const parts = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function titleCaseRole(role) {
+  return String(role ?? "").trim().split(/\s+/).filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function repCard(name, role, available) {
+  const cleaned = String(name ?? "").trim();
+  if (!cleaned) return undefined;
+  const first = cleaned.split(/\s+/)[0];
+  const titled = titleCaseRole(role);
+  return {
+    name: cleaned,
+    first_name: first,
+    role: titled,
+    title: titled,
+    initials: nameInitials(cleaned),
+    available: available === true
+  };
+}
+
+function vendorCardFields(answerText, subject = {}) {
+  const intentLabel = subject.intentLabel || "";
+  const topic = subject.topic || (intentLabel ? intentLabel.toLowerCase() : "");
+  const rep = repCard(subject.representativeName, subject.representativeRole, subject.available);
+  return {
+    ...splitVendorAnswer(answerText),
+    source_label: intentLabel ? `${intentLabel} docs` : "Vendor docs",
+    vendor_name: subject.vendorName || "",
+    vendor_initials: nameInitials(subject.vendorName),
+    topic,
+    ...(rep ? { rep } : {}),
+    user_question: subject.userQuestion || "",
+    offer_id: subject.offerId || ""
+  };
+}
+
+function answerTextOf(value) {
+  if (value && typeof value === "object") return String(value.text ?? value.answer ?? "").trim();
+  return String(value ?? "").trim();
+}
+
+export function vendorAnswerResult(payload = {}) {
+  const answer = answerTextOf(payload.answer ?? payload.offer?.answer ?? payload.escalation?.answer);
+  if (payload.escalation && !payload.offer) {
+    const note = payload.escalation;
+    const copy = asyncEscalationCopy(note);
+    const topic = topicPhrase(note.intent, note.intentLabel);
+    const fields = vendorCardFields(answer, {
+      vendorName: note.vendorName,
+      intentLabel: note.intentLabel,
+      topic,
+      userQuestion: note.issueSummary,
+      offerId: note.id,
+      representativeName: payload.contact?.name,
+      representativeRole: payload.contact?.role,
+      available: false
+    });
+    const known = fields.rep && fields.rep.available === false ? fields.rep : null;
+    if (known) copy.acceptLabel = `Send note to ${known.first_name}`;
+    return {
+      content: [
+        { type: "text", text: copy.suggestedMessage }
+      ],
+      structuredContent: {
+        ...fields,
+        answer,
+        kind: "escalation",
+        status: "awaiting_consent",
+        offered: true,
+        chatStarted: false,
+        mode: "async_note",
+        offerId: note.id,
+        offer_id: note.id,
+        escalationOfferId: note.id,
+        intent: note.intent,
+        intentLabel: note.intentLabel,
+        issueSummary: note.issueSummary,
+        vendorName: note.vendorName,
+        expiresAt: note.expiresAt,
+        ...copy,
+        escalation: note
+      },
+      _meta: uiMeta(INTENT_OFFER_RESOURCE)
+    };
+  }
+  if (payload.offer?.source === "agent") {
+    const offer = payload.offer;
+    const topic = topicPhrase(offer.intent, offer.intentLabel);
+    const fields = vendorCardFields(answer, {
+      vendorName: offer.vendorName,
+      intentLabel: offer.intentLabel,
+      topic,
+      userQuestion: offer.issueSummary,
+      offerId: offer.id
+    });
+    const suggestedMessage = `Nobody from ${offer.vendorName || "the vendor"} is available. The card can open a chat with the vendor assistant. Nothing starts until the user chooses Talk to the assistant.`;
+    const answerLead = fields.direct_answer ? `${fields.direct_answer} ${suggestedMessage}` : suggestedMessage;
+    return {
+      content: [
+        { type: "text", text: answerLead }
+      ],
+      structuredContent: {
+        ...fields,
+        answer: offer.answer || answer,
+        kind: "agent",
+        status: "offered",
+        offered: true,
+        chatStarted: false,
+        offerId: offer.id,
+        offer_id: offer.id,
+        intent: offer.intent,
+        intentLabel: offer.intentLabel,
+        issueSummary: offer.issueSummary,
+        vendorName: offer.vendorName,
+        expiresAt: offer.expiresAt,
+        acceptTool: "talk_to_vendor_agent",
+        declineTool: "decline_invitation",
+        acceptLabel: "Talk to the assistant",
+        declineLabel: "Not now",
+        suggestedMessage
+      },
+      _meta: uiMeta(INTENT_OFFER_RESOURCE)
+    };
+  }
+  if (payload.offer) {
+    const offer = payload.offer;
+    const copy = liveOfferCopy(offer);
+    const firstName = String(offer.representativeName || "").trim().split(/\s+/)[0];
+    const topic = topicPhrase(offer.intent, offer.intentLabel);
+    const fields = vendorCardFields(answer, {
+      vendorName: offer.vendorName,
+      representativeName: offer.representativeName,
+      representativeRole: offer.representativeRole,
+      intentLabel: offer.intentLabel || intentById(offer.intent)?.label || "",
+      topic,
+      userQuestion: offer.issueSummary,
+      offerId: offer.id,
+      available: true
+    });
+    const pointing = firstName
+      ? `${firstName} can help with ${topic} now. The card is where they ask ${firstName}.`
+      : copy.suggestedMessage;
+    const answerLead = fields.direct_answer ? `${fields.direct_answer} ${pointing}` : pointing;
+    return {
+      content: [
+        { type: "text", text: answerLead }
+      ],
+      structuredContent: {
+        ...fields,
+        answer,
+        kind: "live",
+        status: "offered",
+        offered: true,
+        chatStarted: false,
+        offerId: offer.id,
+        offer_id: offer.id,
+        intent: offer.intent,
+        intentLabel: offer.intentLabel,
+        issueSummary: offer.issueSummary,
+        representativeName: offer.representativeName,
+        representativeRole: offer.representativeRole,
+        vendorName: offer.vendorName,
+        expiresAt: offer.expiresAt,
+        ...copy
+      },
+      _meta: {
+        ...uiMeta(INTENT_OFFER_RESOURCE),
+        "supportbridge/offer": {
+          offerId: offer.id,
+          offer_id: offer.id,
+          vendorName: offer.vendorName,
+          representativeName: offer.representativeName,
+          representativeRole: offer.representativeRole
+        }
+      }
+    };
+  }
+  const fields = vendorCardFields(answer, {
+    vendorName: payload.vendorName,
+    intentLabel: payload.intentLabel,
+    topic: payload.topic,
+    userQuestion: payload.user_question
+  });
+  return {
+    content: [{ type: "text", text: fields.direct_answer || answer }],
+    structuredContent: { ...fields, answer, offered: false, chatStarted: false }
+  };
 }
 
 export function asyncEscalationCopy(note) {
@@ -242,14 +490,20 @@ SupportBridge.install = function install(server, options) {
   }
 
   const chatMeta = uiMeta(CHAT_RESOURCE);
-  const intentOfferMeta = uiMeta(INTENT_OFFER_RESOURCE);
   const appOnlyChatMeta = appOnlyMeta();
   const vendorName = String(options.vendorName || "").trim();
   const askHandler = async (args, extra) => createIntentOffer(baseUrl, options.apiKey, await resolveIdentity(extra), normalizeAssistanceArgs(args));
   const acceptHandler = async (args, extra) => confirmAssistance(baseUrl, options.apiKey, await resolveIdentity(extra), normalizeOfferArgs(args).offerId);
   const requestHandler = async (args, extra) => requestAssistance(baseUrl, options.apiKey, await resolveIdentity(extra), normalizeOfferArgs(args).offerId);
   const declineHandler = async (args, extra) => declineInvitation(baseUrl, options.apiKey, await resolveIdentity(extra), normalizeOfferArgs(args).offerId);
-  const noteHandler = async (args, extra) => fileEscalation(baseUrl, options.apiKey, await resolveIdentity(extra), normalizeOfferArgs(args).offerId);
+  const noteHandler = async (args, extra) => fileEscalation(
+    baseUrl,
+    options.apiKey,
+    await resolveIdentity(extra),
+    normalizeOfferArgs(args).offerId,
+    String(args?.note ?? "").trim()
+  );
+  const agentHandler = async (args, extra) => talkToVendorAgent(baseUrl, options.apiKey, await resolveIdentity(extra), args);
   const readHandler = async (args, extra) => pollMessages(baseUrl, options.apiKey, await resolveIdentity(extra), args);
   const sendHandler = async (args, extra) => sendCustomerMessage(baseUrl, options.apiKey, await resolveIdentity(extra), args);
   const endHandler = async (args, extra) => endCustomerConversation(baseUrl, options.apiKey, await resolveIdentity(extra), args?.conversation_id);
@@ -261,18 +515,18 @@ SupportBridge.install = function install(server, options) {
     }, handler);
   };
 
+  // No tool-level UI. Claude files a tool with a card template under Interactive and then skips it.
+  // The consent card stays on the tool result, which is how get_vendor_answer used to be called.
   server.registerTool("ask_company", {
     title: "Pricing and commercial questions",
     description: askCompanyDescription(vendorName),
-    inputSchema: OFFER_ASSISTANCE_INPUT,
-    _meta: intentOfferMeta
+    inputSchema: OFFER_ASSISTANCE_INPUT
   }, askHandler);
 
   server.registerTool("offer_assistance", {
     title: "Pricing and commercial questions",
     description: offerAssistanceDescription(vendorName),
-    inputSchema: OFFER_ASSISTANCE_INPUT,
-    _meta: intentOfferMeta
+    inputSchema: OFFER_ASSISTANCE_INPUT
   }, askHandler);
 
   server.registerTool("accept_invitation", {
@@ -325,6 +579,13 @@ SupportBridge.install = function install(server, options) {
     inputSchema: OFFER_CONNECT_INPUT,
     _meta: appOnlyMeta()
   }, noteHandler);
+
+  server.registerTool("talk_to_vendor_agent", {
+    title: "Talk to the vendor assistant",
+    description: talkToVendorAgentDescription(options.vendorName),
+    inputSchema: AGENT_CHAT_INPUT,
+    _meta: appOnlyMeta()
+  }, agentHandler);
 
   const readSchema = {
     conversation_id: z.string(),
@@ -631,29 +892,23 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
       _meta: uiMeta(CHAT_RESOURCE)
     }, result);
   }
-  if (result?.escalation) {
-    const note = result.escalation;
-    const copy = asyncEscalationCopy(note);
-    return toMcpResult({
-      content: [{ type: "text", text: copy.suggestedMessage }],
+  if (result?.offer?.source === "agent") {
+    return toMcpResult(vendorAnswerResult(result), result);
+  }
+  if (result?.reason === "manual_offer" && result?.offer?.source === "manual") {
+    const offer = result.offer;
+    return {
+      content: [{ type: "text", text: suggestedAssistanceMessage(offer) }],
       structuredContent: {
-        status: "awaiting_consent",
+        status: "offered",
         offered: true,
         chatStarted: false,
-        mode: "async_note",
-        offerId: note.id,
-        offer_id: note.id,
-        escalationOfferId: note.id,
-        intent: note.intent,
-        intentLabel: note.intentLabel,
-        issueSummary: note.issueSummary,
-        vendorName: note.vendorName,
-        expiresAt: note.expiresAt,
-        ...copy,
-        escalation: note
-      },
-      _meta: uiMeta(INTENT_OFFER_RESOURCE)
-    }, result);
+        assistance: assistanceFromOffer(offer)
+      }
+    };
+  }
+  if (result?.escalation) {
+    return toMcpResult(vendorAnswerResult(result), result);
   }
   if (!result?.offer) {
     const reason = result?.reason ?? result?.error ?? "assistance_unavailable";
@@ -669,37 +924,7 @@ async function createIntentOffer(baseUrl, apiKey, identity, args) {
       }
     }, result);
   }
-  const offer = result.offer;
-  const label = offer.intentLabel || intentById(offer.intent)?.label || offer.intent;
-  const copy = liveOfferCopy(offer);
-  return toMcpResult({
-    content: [{ type: "text", text: copy.suggestedMessage }],
-    structuredContent: {
-      status: "offered",
-      offered: true,
-      chatStarted: false,
-      offerId: offer.id,
-      offer_id: offer.id,
-      intent: offer.intent,
-      intentLabel: label,
-      issueSummary: offer.issueSummary,
-      representativeName: offer.representativeName,
-      representativeRole: offer.representativeRole,
-      vendorName: offer.vendorName,
-      expiresAt: offer.expiresAt,
-      ...copy
-    },
-    _meta: {
-      ...uiMeta(INTENT_OFFER_RESOURCE),
-      "supportbridge/offer": {
-        offerId: offer.id,
-        offer_id: offer.id,
-        vendorName: offer.vendorName,
-        representativeName: offer.representativeName,
-        representativeRole: offer.representativeRole
-      }
-    }
-  }, result);
+  return toMcpResult(vendorAnswerResult(result), result);
 }
 
 async function acceptOffer(baseUrl, apiKey, identity, offerId) {
@@ -818,16 +1043,17 @@ async function declineOffer(baseUrl, apiKey, identity, offerId) {
   }, { offer: result.offer });
 }
 
-async function fileEscalation(baseUrl, apiKey, identity, escalationId) {
+async function fileEscalation(baseUrl, apiKey, identity, escalationId, noteText = "") {
   if (!escalationId) {
     return {
       content: [{ type: "text", text: "An escalation offer id is required to send the note." }],
       structuredContent: { status: "offer_id_required", chatStarted: false }
     };
   }
+  const note = String(noteText ?? "").trim();
   const result = await serviceFetch(baseUrl, apiKey, `/v1/escalations/${encodeURIComponent(escalationId)}/file`, {
     method: "POST",
-    body: identity
+    body: note ? { ...identity, note } : identity
   });
   if (result?.escalation?.status === "pending") {
     return toMcpResult({
@@ -916,6 +1142,36 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
     content: [{ type: "text", text: transcript(result) }],
     structuredContent
   }, result);
+}
+
+async function talkToVendorAgent(baseUrl, apiKey, identity, args) {
+  const offerId = args?.offerId || args?.offer_id;
+  const result = await serviceFetch(baseUrl, apiKey, "/v1/agent-chat", {
+    method: "POST",
+    body: { ...identity, offerId, text: args?.text }
+  });
+  if (!result || result.error) {
+    return {
+      content: [{ type: "text", text: "The assistant did not reply." }],
+      isError: true,
+      structuredContent: { status: result?.error ?? "not_sent", kind: "agent", offerId }
+    };
+  }
+  const lines = (result.messages ?? []).map(row => `${row.role === "assistant" ? "Assistant" : "You"}: ${row.text}`);
+  if (result.configured === false) lines.push("Repeating the saved answer. No model key is set on this service.");
+  return {
+    content: [{ type: "text", text: lines.join("\n") || result.reply }],
+    structuredContent: {
+      status: "agent_chat",
+      kind: "agent",
+      acceptTool: "talk_to_vendor_agent",
+      offerId: result.offerId,
+      offer_id: result.offerId,
+      reply: result.reply,
+      configured: result.configured === true,
+      messages: result.messages ?? []
+    }
+  };
 }
 
 async function sendCustomerMessage(baseUrl, apiKey, identity, args) {
@@ -1201,13 +1457,14 @@ function applyResult(data){
   conversationId=payload.conversationId||payload.conversation&&payload.conversation.id||conversationId;
   rememberPerson(payload);
   rememberPerson(payload.conversation);
+  const phase=payload.conversation&&payload.conversation.phase||"";
   const status=payload.status||payload.conversation&&payload.conversation.status||"";
-  if(status==="ended"||payload.conversation&&payload.conversation.endedAt)ended=true;
+  if(status==="ended"||status==="closed"||phase==="closed"||payload.conversation&&payload.conversation.endedAt)ended=true;
   if(Array.isArray(payload.messages)){
     cursor=payload.cursor||cursor;
     if(!ended&&payload.messages.some(m=>m.sender==="system"&&/conversation has ended/i.test(m.text||"")))ended=true;
     paint(payload.messages);
-  }else if(payload.chatStarted){
+  }else if(payload.chatStarted && logEl && !logEl.childElementCount){
     if(payload.representativeName)representativeName=payload.representativeName;
     paint([]);
   }
@@ -1300,14 +1557,157 @@ body.sb-chat-mode{
   background:#FAFAF7;color:#1C1C19;
   font:400 14px/20px Inter,"Segoe UI",system-ui,sans-serif;
 }
-body.sb-chat-mode #offer-root{display:none}
+body.sb-chat-mode #offer-root,body.sb-chat-mode #vendor-card{display:none}
 body.sb-chat-mode #chat-root{
   display:flex;flex-direction:column;flex:1;height:520px;min-height:520px;overflow:hidden;
 }
 ${chatPanelStyles()}
 :where(button):focus-visible{outline:2px solid #2F7D4F;outline-offset:2px}
+.agent-chat{display:grid;gap:10px;margin-top:12px}
+.agent-chat[hidden]{display:none}
+.agent-thread{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.agent-thread li{margin:0;font-size:14px;line-height:1.45}
+.agent-chat textarea{width:100%;min-height:72px;resize:vertical;border:1px solid #c5cdd6;border-radius:6px;padding:8px;font:inherit}
+.agent-notice{margin:0;color:#5c6770;font-size:13px}
+#vendor-card{
+  --va-bg:#fff; --va-text:#1f2a24; --va-border:#e3e6e4; --va-offer:#f3f8f5; --va-green:#176b43; --va-on:#fff;
+  display:block; width:100%; overflow:hidden; border:1px solid var(--va-border); border-radius:12px;
+  background:var(--va-bg); color:var(--va-text);
+  font:400 14px/21px system-ui,"Segoe UI",sans-serif;
+  box-shadow:0 1px 2px rgba(20,30,25,.06);
+}
+#vendor-card[hidden]{display:none}
+.va-head{
+  display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; margin:0; padding:0 24px;
+  background:#fafbfa; border-bottom:1px solid #eceeed;
+}
+.va-brand{display:flex; align-items:center; gap:8px; min-width:0}
+.va-badge{
+  display:grid; place-items:center; width:22px; height:22px; border-radius:6px; background:var(--va-green); color:var(--va-on);
+  font:600 11px/1 system-ui,"Segoe UI",sans-serif;
+}
+.va-brand strong{font:600 14px/20px system-ui,"Segoe UI",sans-serif}
+.va-kicker{color:#6b776f; font:400 13px/18px system-ui,"Segoe UI",sans-serif}
+.va-source{display:flex; align-items:center; gap:6px; margin:0; color:#6b776f; font:400 13px/18px system-ui,"Segoe UI",sans-serif; white-space:nowrap}
+.va-answer{display:flex; flex-direction:column; gap:10px; padding:16px 24px 18px}
+#va-direct{margin:0; color:#1f2a24; font:600 15px/22px system-ui,"Segoe UI",sans-serif}
+#va-direct[hidden]{display:none}
+#va-context{margin:0; color:#3d4a43; font:400 14px/21px system-ui,"Segoe UI",sans-serif}
+#va-context{
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden;
+}
+#va-context.is-open{display:block; -webkit-line-clamp:unset; overflow:visible}
+#va-context[hidden],#va-more[hidden]{display:none}
+#va-more{
+  display:inline-flex; align-items:center; gap:4px; margin:0; padding:0; border:0; background:transparent;
+  color:var(--va-green); font:500 13px/18px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+}
+.va-offer{
+  display:flex; flex-direction:column; gap:12px; margin:0; padding:16px 24px 18px; border-top:1px solid #eceeed;
+  background:var(--va-offer);
+}
+.va-offer.is-note{background:#f6f6f3}
+.va-offer[hidden]{display:none}
+.va-rep{display:flex; align-items:flex-start; gap:12px}
+.va-avatar-wrap{position:relative; flex:none; width:40px; height:40px}
+.va-avatar{
+  display:grid; place-items:center; width:40px; height:40px; border-radius:20px; background:#d9e9df; color:#176b43;
+  font:600 14px/1 system-ui,"Segoe UI",sans-serif;
+}
+.va-offer.is-note .va-avatar{background:#e6e8e3; color:#4f5d56}
+#va-bubble{display:none}
+.va-offer.is-note .va-avatar:not(.has-initials) #va-bubble{display:block}
+.va-dot{
+  position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border:2px solid #f3f8f5; border-radius:6px; background:#1f9d5a;
+}
+.va-dot.is-offline{background:#fff; border:2px solid #9aa49e}
+.va-dot[hidden]{display:none}
+#va-rep-heading{margin:0; color:#1f2a24; font:600 15px/22px system-ui,"Segoe UI",sans-serif}
+#va-rep-sub{margin:2px 0 0; color:#4f5d56; font:400 13px/18px system-ui,"Segoe UI",sans-serif}
+.va-question{margin:0; padding:9px 12px; border:1px solid #dfe8e2; border-radius:8px; background:#fff}
+.va-question[hidden]{display:none}
+.va-offer.is-note .va-question{display:none}
+#va-eyebrow{display:none; margin:0 0 2px; color:#6b776f; letter-spacing:.06em; font:600 11px/16px system-ui,"Segoe UI",sans-serif}
+.va-offer.is-note #va-eyebrow{display:block}
+#va-note-label{display:block; margin:0 0 6px; color:#6b776f; letter-spacing:.06em; font:600 11px/16px system-ui,"Segoe UI",sans-serif}
+#va-note-text{
+  display:block; width:100%; height:64px; max-height:160px; box-sizing:border-box; resize:vertical;
+  padding:9px 12px; border:1px solid #dfe3dd; border-radius:8px; background:#fff; color:#1f2a24;
+  font:400 14px/21px system-ui,"Segoe UI",sans-serif;
+}
+.va-note{display:none}
+.va-offer.is-note .va-note{display:block}
+#va-helper{margin:8px 0 0; color:#6b776f; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+.va-actions{display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0}
+#va-accept{
+  display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 18px; border:0; border-radius:8px; background:var(--va-green); color:var(--va-on);
+  font:600 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+}
+#va-decline{
+  height:40px; padding:0 12px; border:0; background:transparent; color:#3d4a43;
+  font:500 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+}
+#va-accept:disabled,#va-decline:disabled{opacity:.5; cursor:not-allowed}
+#va-privacy{display:flex; align-items:center; gap:6px; margin:0 0 0 auto; color:#4f5d56; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+#va-status{margin:0; color:#4f5d56; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+#va-status:empty{display:none}
+#va-status.error{color:#A32D2D}
+#va-agent[hidden]{display:none}
+#va-agent{display:flex; flex-direction:column; gap:10px; margin-top:4px}
+#va-agent-log{display:flex; flex-direction:column; gap:8px}
+.va-agent-line{margin:0}
+#va-agent-form{display:flex; gap:8px}
+#va-agent-input{flex:1; min-width:0; height:40px; margin:0; padding:0 10px; border:1px solid #e3e6e4; border-radius:8px; font:400 14px/20px system-ui,"Segoe UI",sans-serif}
+#va-agent-send{height:40px; margin:0; padding:0 14px; border:1px solid #176b43; border-radius:8px; background:#176b43; color:#fff; font:500 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer}
+#va-agent-foot{margin:0; color:#6b776f; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
 </style></head>
 <body${startInChat ? ' class="sb-chat-mode"' : ""}>
+  <article id="vendor-card" hidden>
+    <header class="va-head">
+      <div class="va-brand">
+        <span id="va-vendor-badge" class="va-badge"></span>
+        <strong id="va-vendor-name"></strong>
+        <span class="va-kicker">Vendor answer</span>
+      </div>
+      <p id="va-source" class="va-source"><span id="va-source-text"></span></p>
+    </header>
+    <div class="va-answer">
+      <p id="va-direct"></p>
+      <p id="va-context"></p>
+      <button id="va-more" type="button" hidden>Show full answer</button>
+    </div>
+    <section id="va-offer" class="va-offer" hidden>
+      <div class="va-rep">
+        <span class="va-avatar-wrap"><span id="va-avatar" class="va-avatar"><span id="va-initials"></span><svg id="va-bubble" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.2 4.2h11.6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.4L5 14.6V12.2H3.2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><span id="va-dot" class="va-dot" hidden></span></span>
+        <div>
+          <p id="va-eyebrow" hidden>HUMAN FOLLOW-UP</p>
+          <h2 id="va-rep-heading"></h2>
+          <p id="va-rep-sub"></p>
+        </div>
+      </div>
+      <div id="va-question" class="va-question" hidden><span id="va-question-label"></span><em id="va-question-text"></em></div>
+      <div id="va-note" class="va-note" hidden>
+        <label id="va-note-label" for="va-note-text">YOUR NOTE, EDIT IF YOU LIKE</label>
+        <textarea id="va-note-text"></textarea>
+        <p id="va-helper"></p>
+      </div>
+      <div class="va-actions">
+        <button id="va-accept" type="button"><span id="va-accept-label">Chat with support</span></button>
+        <button id="va-decline" type="button">Not now</button>
+        <p id="va-privacy"><span id="va-privacy-text"></span></p>
+      </div>
+      <p id="va-status" role="status"></p>
+      <div id="va-agent" hidden>
+        <div id="va-agent-log"></div>
+        <form id="va-agent-form">
+          <label for="va-agent-input">Follow-up</label>
+          <input id="va-agent-input" type="text" maxlength="2000" placeholder="Ask a follow-up">
+          <button id="va-agent-send" type="submit">Send</button>
+        </form>
+        <p id="va-agent-foot">A person is not in this chat.</p>
+      </div>
+    </section>
+  </article>
   <section id="offer-root" class="card" aria-labelledby="offer-title">
     <p class="eyebrow" id="eyebrow">Support available</p>
     <h1 id="offer-title">Support is available to review this result. Would you like to connect?</h1>
@@ -1317,6 +1717,13 @@ ${chatPanelStyles()}
       <button id="accept" type="button">Chat with support</button>
       <button id="decline" type="button">Not now</button>
     </div>
+    <form class="agent-chat" id="agent-chat" hidden>
+      <ol class="agent-thread" id="agent-thread"></ol>
+      <p class="agent-notice" id="agent-notice" hidden>Repeating the saved answer. No model key is set on this service.</p>
+      <label for="agent-text">Message</label>
+      <textarea id="agent-text" name="text" maxlength="2000" required></textarea>
+      <button id="agent-send" type="submit">Send</button>
+    </form>
     <p id="status" role="status" aria-live="polite"></p>
   </section>
   <div id="chat-root">${chatMarkup()}</div>
@@ -1327,6 +1734,7 @@ let offerId="";
 let acceptTool="accept_invitation";
 let declineTool="decline_invitation";
 let noteOffer=false;
+let agentOffer=false;
 let sentTitle="";
 let settled=false;
 let pendingAction=false;
@@ -1339,6 +1747,59 @@ const actionsEl=document.getElementById("actions");
 const statusEl=document.getElementById("status");
 const acceptEl=document.getElementById("accept");
 const declineEl=document.getElementById("decline");
+const agentChatEl=document.getElementById("agent-chat");
+const agentThreadEl=document.getElementById("agent-thread");
+const agentNoticeEl=document.getElementById("agent-notice");
+const agentTextEl=document.getElementById("agent-text");
+const offerRootEl=document.getElementById("offer-root");
+const vaCard=document.getElementById("vendor-card");
+const vaVendorBadge=document.getElementById("va-vendor-badge");
+const vaVendorName=document.getElementById("va-vendor-name");
+const vaSourceText=document.getElementById("va-source-text");
+const vaDirect=document.getElementById("va-direct");
+const vaContext=document.getElementById("va-context");
+const vaMore=document.getElementById("va-more");
+const vaOffer=document.getElementById("va-offer");
+const vaAvatar=document.getElementById("va-avatar");
+const vaInitials=document.getElementById("va-initials");
+const vaDot=document.getElementById("va-dot");
+const vaEyebrow=document.getElementById("va-eyebrow");
+const vaRepHeading=document.getElementById("va-rep-heading");
+const vaRepSub=document.getElementById("va-rep-sub");
+const vaQuestion=document.getElementById("va-question");
+const vaQuestionLabel=document.getElementById("va-question-label");
+const vaQuestionText=document.getElementById("va-question-text");
+const vaNote=document.getElementById("va-note");
+const vaNoteLabel=document.getElementById("va-note-label");
+const vaNoteText=document.getElementById("va-note-text");
+const vaHelper=document.getElementById("va-helper");
+const vaAccept=document.getElementById("va-accept");
+const vaAcceptLabel=document.getElementById("va-accept-label");
+const vaDecline=document.getElementById("va-decline");
+const vaPrivacyText=document.getElementById("va-privacy-text");
+const vaStatus=document.getElementById("va-status");
+const vaAgent=document.getElementById("va-agent");
+const vaAgentLog=document.getElementById("va-agent-log");
+const vaAgentForm=document.getElementById("va-agent-form");
+const vaAgentInput=document.getElementById("va-agent-input");
+let vaShort="";
+let vaFull="";
+let vaContextText="";
+let vaUserQuestion="";
+function renderAgentThread(payload){
+  agentOffer=true;
+  agentChatEl.hidden=false;
+  actionsEl.hidden=true;
+  agentThreadEl.replaceChildren();
+  for(const row of payload.messages||[]){
+    const item=document.createElement("li");
+    item.textContent=(row.role==="assistant"?"Assistant: ":"You: ")+String(row.text||"");
+    agentThreadEl.append(item);
+  }
+  agentNoticeEl.hidden=payload.configured!==false;
+  statusEl.textContent="";
+  fitFrame();
+}
 function resultBags(result){
   if(!result||typeof result!=="object")return [];
   return [result.structuredContent,result.toolOutput,result.toolResponseMetadata,result.result,result].filter(bag=>bag&&typeof bag==="object");
@@ -1372,8 +1833,113 @@ function mountChat(payload){
   startChatSession(payload||{});
   requestFrame(520);
 }
+function renderVendor(payload){
+  offerRootEl.hidden=true;
+  vaCard.hidden=false;
+  const rep=payload.rep&&typeof payload.rep==="object"?payload.rep:{};
+  const vendorName=payload.vendor_name||payload.vendorName||"";
+  vaVendorBadge.textContent=payload.vendor_initials||"";
+  vaVendorName.textContent=vendorName;
+  vaSourceText.textContent=payload.source_label||((payload.intentLabel||"Vendor")+" docs");
+  vaShort=payload.direct_answer||"";
+  vaContextText=payload.context||"";
+  vaFull=payload.full_answer||vaShort;
+  vaDirect.hidden=false;
+  vaDirect.textContent=vaShort;
+  vaContext.classList.remove("is-open");
+  vaContext.hidden=!vaContextText;
+  vaContext.textContent=vaContextText;
+  vaMore.hidden=vaFull.length<=vaShort.length;
+  vaMore.textContent="Show full answer";
+  offerId=payload.offer_id||payload.offerId||payload.escalationOfferId||"";
+  if(payload.acceptTool) acceptTool=payload.acceptTool;
+  if(payload.declineTool) declineTool=payload.declineTool;
+  if(payload.sentTitle) sentTitle=payload.sentTitle;
+  const kind=payload.kind||(acceptTool==="talk_to_vendor_agent"?"agent":(acceptTool==="leave_note"||acceptTool==="file_escalation"||payload.mode==="async_note"?"escalation":"live"));
+  const note=kind==="escalation"&&Boolean(offerId);
+  agentOffer=kind==="agent";
+  noteOffer=note;
+  vaOffer.classList.toggle("is-note", note);
+  vaOffer.hidden=!offerId;
+  const topic=payload.topic||String(payload.intentLabel||"this").toLowerCase();
+  const known=note&&rep.name&&rep.available===false;
+  vaUserQuestion=payload.user_question||"";
+  vaAgent.hidden=true;
+  vaAccept.hidden=false;
+  vaDecline.hidden=false;
+  if(kind==="agent"){
+    vaEyebrow.hidden=false;
+    vaEyebrow.textContent="VENDOR ASSISTANT";
+    vaNote.hidden=true;
+    vaQuestion.hidden=true;
+    vaAvatar.classList.add("has-initials");
+    vaInitials.textContent=payload.vendor_initials||"A";
+    vaDot.hidden=true;
+    vaRepHeading.textContent="Vendor assistant";
+    vaRepSub.textContent="No one from the team is taking this. The assistant answers from the saved context.";
+    vaAcceptLabel.textContent=payload.acceptLabel||"Talk to the assistant";
+    vaDecline.textContent=payload.declineLabel||"Not now";
+    vaPrivacyText.textContent="Nothing starts until you choose Talk to the assistant.";
+  }else if(note){
+    const first=rep.first_name||String(rep.name||"").split(" ")[0];
+    vaEyebrow.hidden=false;
+    vaEyebrow.textContent="HUMAN FOLLOW-UP";
+    vaNote.hidden=false;
+    vaQuestion.hidden=true;
+    vaAvatar.classList.toggle("has-initials", Boolean(known));
+    vaInitials.textContent=known?(rep.initials||""):"";
+    vaDot.hidden=!known;
+    vaDot.classList.toggle("is-offline", Boolean(known));
+    vaRepHeading.textContent=known?("Leave "+rep.name+" a note about "+topic):("Ask "+(vendorName||"the vendor")+" about "+topic);
+    vaRepSub.textContent=known
+      ?(first+" is offline right now.")
+      :("No one on the "+topic+" team is online right now. They usually reply within a business day.");
+    vaNoteLabel.textContent=known?("YOUR NOTE TO "+first.toUpperCase()+", EDIT IF YOU LIKE"):"YOUR NOTE, EDIT IF YOU LIKE";
+    if(document.activeElement!==vaNoteText) vaNoteText.value=payload.user_question||payload.issueSummary||"";
+    vaHelper.textContent=(known?first:(vendorName||"The vendor"))+" sees this note and your name from this session. They don't see the rest of your chat.";
+    vaAcceptLabel.textContent=payload.acceptLabel||(known?"Send note to "+first:"Send note");
+    vaDecline.textContent=payload.declineLabel||"No thanks";
+    vaPrivacyText.textContent="Nothing is sent until you choose "+(vaAcceptLabel.textContent||"Send note");
+  }else{
+    vaEyebrow.hidden=true;
+    vaNote.hidden=true;
+    vaAvatar.classList.add("has-initials");
+    vaInitials.textContent=rep.initials||payload.vendor_initials||"";
+    vaDot.hidden=rep.available!==true;
+    vaDot.classList.remove("is-offline");
+    const first=rep.first_name||String(rep.name||"").split(" ")[0];
+    const ask=first?"Ask "+first:(payload.acceptLabel||"Chat with support");
+    vaAcceptLabel.textContent=ask;
+    vaDecline.textContent=payload.declineLabel||"Not now";
+    vaPrivacyText.textContent="Nothing is sent until you choose "+ask+".";
+    vaRepHeading.textContent=rep.name?rep.name+" can help with "+topic:"Support can help with "+topic;
+    const role=rep.role||rep.title||"";
+    const place=role?role+" at "+(vendorName||"the vendor"):(vendorName||"");
+    const presence=rep.available===true?"Online now":"";
+    vaRepSub.textContent=[place,presence].filter(Boolean).join(". ")+(place||presence?".":"");
+    const question=payload.user_question||"";
+    vaQuestion.hidden=!question;
+    vaQuestionLabel.textContent=(first||"SUPPORT").toUpperCase()+" WILL SEE";
+    vaQuestionText.textContent=question?'"'+question+'"':"";
+  }
+  if(!pendingAction) setBusy(false);
+  fitFrame();
+}
 function apply(data){
   const payload=flattenAssistance(data||{});
+  if(payload.direct_answer){
+    renderVendor(payload);
+    if(conversationIdOf(payload)&&chatStartedOf(payload)){
+      mountChat(mountPayload(payload));
+    }
+    return;
+  }
+  if((payload.kind==="agent"||payload.acceptTool==="talk_to_vendor_agent")&&Array.isArray(payload.messages)){
+    offerId=payload.offerId||payload.offer_id||offerId;
+    renderAgentThread(payload);
+    setBusy(false);
+    return;
+  }
   if(conversationIdOf(payload)&&(chatStartedOf(payload)||Array.isArray(payload.messages)||(payload.conversation&&payload.conversation.id))){
     mountChat(mountPayload(payload));
     return;
@@ -1394,7 +1960,8 @@ function apply(data){
   offerId=payload.offerId||payload.offer_id||payload.escalationOfferId||offerId;
   if(payload.acceptTool) acceptTool=payload.acceptTool;
   if(payload.declineTool) declineTool=payload.declineTool;
-  noteOffer=payload.mode==="async_note"||acceptTool==="leave_note"||acceptTool==="file_escalation"||declineTool==="decline_escalation";
+  agentOffer=payload.kind==="agent"||acceptTool==="talk_to_vendor_agent";
+  noteOffer=!agentOffer&&(payload.mode==="async_note"||acceptTool==="leave_note"||acceptTool==="file_escalation"||declineTool==="decline_escalation");
   if(payload.cardTitle){
     eyebrowEl.textContent=payload.cardEyebrow||eyebrowEl.textContent;
     eyebrowEl.classList.toggle("neutral", payload.cardEyebrowTone==="neutral");
@@ -1428,9 +1995,144 @@ function apply(data){
 }
 function setBusy(busy){
   pendingAction=busy;
-  acceptEl.disabled=busy||settled||offerClosed||!offerId;
-  declineEl.disabled=busy||settled||offerClosed||!offerId;
+  const locked=busy||settled||offerClosed||!offerId;
+  acceptEl.disabled=locked;
+  declineEl.disabled=locked;
+  vaAccept.disabled=locked;
+  vaDecline.disabled=locked;
 }
+vaMore.onclick=()=>{
+  const open=vaContext.classList.toggle("is-open");
+  if(open){
+    vaDirect.hidden=true;
+    vaContext.hidden=false;
+    vaContext.textContent=vaFull;
+    vaMore.textContent="Show less";
+  }else{
+    vaDirect.hidden=false;
+    vaContext.classList.remove("is-open");
+    vaContext.hidden=!vaContextText;
+    vaContext.textContent=vaContextText;
+    vaMore.textContent="Show full answer";
+  }
+  fitFrame();
+};
+function paintAgentMessages(payload){
+  const messages=Array.isArray(payload.messages)?payload.messages:[];
+  vaAgentLog.replaceChildren();
+  for(const message of messages){
+    const line=document.createElement("p");
+    line.className="va-agent-line";
+    line.textContent=(message.role==="user"?"You: ":"Assistant: ")+String(message.text||"");
+    vaAgentLog.append(line);
+  }
+  vaAgent.hidden=false;
+  vaAccept.hidden=true;
+  vaDecline.hidden=true;
+  vaQuestion.hidden=true;
+  vaNote.hidden=true;
+  vaPrivacyText.textContent="";
+  vaStatus.classList.remove("error");
+  vaStatus.textContent=payload.configured===false?"Repeating the saved answer. No model key is set on this service.":"";
+  vaCard.hidden=false;
+  offerRootEl.hidden=true;
+  setBusy(false);
+  fitFrame();
+}
+async function sendAgent(text){
+  const cleaned=String(text||"").trim();
+  if(!cleaned){
+    vaStatus.classList.add("error");
+    vaStatus.textContent="Type a message first.";
+    setBusy(false);
+    return;
+  }
+  const result=await callTool("talk_to_vendor_agent",{offer_id:offerId,offerId:offerId,text:cleaned});
+  paintAgentMessages(mountPayload(result));
+  vaAgentInput.value="";
+}
+vaAccept.onclick=async()=>{
+  if(!offerId||settled||pendingAction||offerClosed)return;
+  setBusy(true);
+  vaStatus.classList.remove("error");
+  vaStatus.textContent=noteOffer?"Sending…":"Connecting…";
+  try{
+    if(acceptTool==="talk_to_vendor_agent"){
+      vaAgent.hidden=false;
+      vaAccept.hidden=true;
+      vaDecline.hidden=true;
+      vaStatus.textContent="";
+      setBusy(false);
+      vaAgentInput.focus();
+      fitFrame();
+      return;
+    }
+    const args={offer_id:offerId,offerId:offerId};
+    if(acceptTool==="leave_note"||acceptTool==="file_escalation") args.note=vaNoteText.value.trim();
+    const result=await callTool(acceptTool,args);
+    if(noteOffer||acceptTool==="leave_note"||acceptTool==="file_escalation"){
+      const filed=statusOf(result);
+      if(filed==="pending"){
+        settled=true;
+        offerClosed=true;
+        vaRepHeading.textContent=sentTitle||"Sent.";
+        vaNote.hidden=true;
+        vaAccept.hidden=true;
+        vaDecline.hidden=true;
+        vaPrivacyText.textContent="";
+        vaStatus.textContent="";
+        setBusy(true);
+        fitFrame();
+        return;
+      }
+      vaStatus.classList.add("error");
+      vaStatus.textContent=filed==="escalation_expired"?"This note offer has expired. Ask again if you still want to send it.":"Could not send this note.";
+      setBusy(false);
+      return;
+    }
+    const conversationId=conversationIdOf(result);
+    if(chatStartedOf(result)&&conversationId){
+      mountChat(Object.assign(mountPayload(result),{conversationId:conversationId,chatStarted:true}));
+      return;
+    }
+    vaStatus.classList.add("error");
+    vaStatus.textContent="Could not start this chat.";
+    setBusy(false);
+  }catch(error){
+    vaStatus.classList.add("error");
+    vaStatus.textContent=error.message||"Could not start this chat.";
+    setBusy(false);
+  }
+};
+vaDecline.onclick=async()=>{
+  if(!offerId||settled||pendingAction||offerClosed)return;
+  setBusy(true);
+  vaStatus.classList.remove("error");
+  vaStatus.textContent="Declining…";
+  try{
+    await callTool(declineTool,{offer_id:offerId,offerId:offerId});
+    settled=true;
+    offerClosed=true;
+    stopPolling();
+    vaStatus.textContent=noteOffer||declineTool==="decline_escalation"?"Not sent.":"Declined. No one was contacted.";
+  }catch(error){
+    vaStatus.classList.add("error");
+    vaStatus.textContent=error.message||"Could not decline this offer.";
+    setBusy(false);
+  }
+};
+vaAgentForm.onsubmit=async(event)=>{
+  event.preventDefault();
+  if(!offerId||pendingAction)return;
+  setBusy(true);
+  try{
+    await sendAgent(vaAgentInput.value);
+  }catch(error){
+    vaStatus.classList.add("error");
+    vaStatus.textContent="The assistant did not reply.";
+    setBusy(false);
+  }
+};
 function acceptFailed(status,message){
   const terminal=status==="offer_expired"||status==="offer_not_active"||status==="offer_not_found";
   statusEl.classList.add("error");
@@ -1458,6 +2160,15 @@ async function resumeAcceptedOffer(){
 }
 acceptEl.onclick=async()=>{
   if(!offerId||settled||pendingAction||offerClosed)return;
+  if(agentOffer){
+    agentChatEl.hidden=false;
+    actionsEl.hidden=true;
+    statusEl.textContent="";
+    setBusy(false);
+    agentTextEl.focus();
+    fitFrame();
+    return;
+  }
   setBusy(true);
   statusEl.classList.remove("error");
   statusEl.textContent=noteOffer?"Sending…":"Connecting…";
@@ -1499,6 +2210,23 @@ acceptEl.onclick=async()=>{
     }
   }catch(error){
     acceptFailed("",error.message||"Could not accept this offer.");
+  }
+};
+agentChatEl.onsubmit=async(event)=>{
+  event.preventDefault();
+  const text=agentTextEl.value.trim();
+  if(!offerId||!text||pendingAction)return;
+  setBusy(true);
+  statusEl.classList.remove("error");
+  statusEl.textContent="";
+  try{
+    const result=await callTool("talk_to_vendor_agent",{offerId:offerId,offer_id:offerId,text:text});
+    agentTextEl.value="";
+    apply(result.structuredContent||result);
+  }catch(error){
+    statusEl.classList.add("error");
+    statusEl.textContent="The assistant did not reply.";
+    setBusy(false);
   }
 };
 declineEl.onclick=async()=>{
@@ -1579,7 +2307,7 @@ function payloadFrom(value){
   if(!value||typeof value!=="object")return null;
   const nested=value.structuredContent||value["supportbridge/offer"];
   const payload=flattenAssistance(nested&&typeof nested==="object"?nested:value);
-  if(payload.offerId||payload.offer_id||payload.escalationOfferId||payload.cardTitle||payload.vendorName||payload.representativeName||payload.chatStarted||payload.conversationId)return payload;
+  if(payload.offerId||payload.offer_id||payload.escalationOfferId||payload.cardTitle||payload.vendorName||payload.representativeName||payload.chatStarted||payload.conversationId||payload.direct_answer)return payload;
   return null;
 }
 function hostOutput(){
