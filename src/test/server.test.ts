@@ -22,39 +22,30 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
   const { client, server } = await connectedClient();
   try {
     assert.match(client.getInstructions() ?? "", /ask_company/);
-    assert.match(client.getInstructions() ?? "", /offer_assistance/);
+    assert.doesNotMatch(client.getInstructions() ?? "", /offer_assistance/);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     const tools = await client.listTools();
     assert.match(tools.tools.find(tool => tool.name === "ask_company")?.description ?? "", /Ask Pitch Fork/);
-    for (const name of ["ask_company", "offer_assistance", "search", "fetch", "get_company", "list_companies"]) {
+    for (const name of ["ask_company", "search", "fetch", "get_company", "list_companies"]) {
       assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
     }
     assert.doesNotMatch(client.getInstructions() ?? "", /get_vendor_answer|no public price list|Call offer_assistance when the user asks/i);
+    assert.ok(tools.tools.every(tool => !tool.description?.startsWith("Deprecated.")));
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
       "accept_invitation",
       "ask_company",
-      "confirm_assistance",
-      "decline_assistance",
-      "decline_escalation",
       "decline_invitation",
       "end_conversation",
       "fetch",
-      "file_escalation",
       "get_company",
       "get_invitation",
       "leave_note",
       "list_companies",
       "list_industries",
-      "offer_assistance",
       "read_conversation",
-      "request_assistance",
       "request_person",
       "search",
       "send_to_person",
-      "support_end_session",
-      "support_get_messages",
-      "support_get_offer",
-      "support_send_message",
       "talk_to_vendor_agent",
     ]);
   } finally {

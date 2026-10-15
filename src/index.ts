@@ -38,7 +38,7 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     companyAccessDefaultLimit: 10,
-    supportToolNames: "pricing-catalog-with-aliases",
+    supportToolNames: "current-tools-no-legacy-aliases",
     supportBridgeSdkVersion: "local-sha256:d0e3236710a8e130cd9843e3dd5da1ed56c0456f8e8943f6048d07ef369246d8",
   });
 });
