@@ -60,8 +60,8 @@ export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by ask_company.";
 
 export function askCompanyDescription(vendorName) {
-  const company = String(vendorName || "").trim() || "the company";
-  return `Call this for a question about ${company}, including security, compliance, policy, and pricing. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Topics: ${INTENT_WORDING}. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
+  const company = String(vendorName || "").trim() || "this vendor";
+  return `Use this whenever the user asks about ${company}'s pricing, plans, purchasing, demos or trials, enterprise options, implementation or onboarding, security or compliance (security, compliance, SOC 2, ISO 27001, HIPAA, GDPR, SSO, DPA, DPAs, encryption, privacy, certification, certifications, audit, audits, penetration testing, data residency, access control, MFA, questionnaire, subprocessors), billing, or cancelling or downgrading. Returns ${company}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. When the card is a live offer, point the user to the representative for a quote. When the card is an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds.`;
 }
 
 export const OFFER_ASSISTANCE_DESCRIPTION = `Fallback when ask_company is unavailable. Call this tool for security, compliance, policy, pricing, and the other topics. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Topics: ${INTENT_WORDING}. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;

@@ -25,7 +25,10 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
     assert.match(client.getInstructions() ?? "", /offer_assistance/);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     const tools = await client.listTools();
-    assert.match(tools.tools.find(tool => tool.name === "ask_company")?.description ?? "", /question about Pitch Fork/);
+    const companyDescription = tools.tools.find(tool => tool.name === "ask_company")?.description ?? "";
+    assert.ok(companyDescription.startsWith("Use this whenever the user asks about Pitch Fork's pricing, plans, purchasing"));
+    assert.ok(companyDescription.endsWith("The vendor is contacted only after request_assistance or file_escalation succeeds."));
+    assert.match(companyDescription, /Call it before answering such questions from general knowledge/);
     for (const name of ["ask_company", "offer_assistance", "search", "fetch", "get_company", "list_companies"]) {
       assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
     }

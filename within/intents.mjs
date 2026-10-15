@@ -65,9 +65,10 @@ function resolveAssistanceIntent(rawIntent, haystack) {
   if (/\b(demo|pilot|trial|evaluat|walkthrough)\b/.test(haystack) || /demo|pilot|trial/.test(normalized)) return "demo_or_pilot";
   if (/\b(enterprise|volume|sla)\b/.test(haystack) || /enterprise/.test(normalized)) return "enterprise";
   if (/\b(implement|onboard|migrat|train|professional.?service)\b/.test(haystack) || /implement|onboard/.test(normalized)) return "implementation";
-  if (/\b(secur|complian|soc|hipaa|gdpr|sso|dpa)\b/.test(haystack) || /secur|complian/.test(normalized)) return "security_compliance";
+  if (/\b(secur|complian|soc|hipaa|gdpr|sso|dpa|encrypt|privacy|certif|audit|penetration|pen.?test|residency|access control|mfa|questionnaire|subprocessor)\b/.test(haystack) || /secur|complian|encrypt|privacy|certif|audit|mfa/.test(normalized)) return "security_compliance";
   if (/\b(bill|invoice|refund|tax|payment)\b/.test(haystack) || /bill|invoice|payment/.test(normalized)) return "billing_payment";
   if (/\b(cancel|downgrad|close.?account|churn)\b/.test(haystack) || /cancel|downgrad/.test(normalized)) return "cancellation_downgrade";
+  if (/\bpolic/.test(haystack) || /polic/.test(normalized)) return "security_compliance";
   if (/\b(support|talk|speak|chat|help|human|representative|agent|person)\b/.test(haystack) || /support|talk|help/.test(normalized)) {
     return "purchase";
   }
