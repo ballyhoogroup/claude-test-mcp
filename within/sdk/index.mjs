@@ -55,16 +55,16 @@ const INTENT_WORDING = STANDARD_ASSISTANCE_INTENTS
   .map(intent => `${intent.label} (${intent.words.join(", ")})`)
   .join("; ");
 
-export const SERVER_INSTRUCTIONS = `Call ask_company when the user asks about pricing or any topic it covers. That call creates the consent card and is the answer. offer_assistance is the same call for hosts that cannot call ask_company. Search, list, and fetch return catalog records and do not create the card. The call does not contact anyone until the user agrees on the card. If a tool result includes an \`assistance\` object with a suggested message, relay that message. That offer is text, and the user replies in text. When the user accepts, call accept_invitation with its offerId. When the user accepts a manual offer in text, call request_person with its offerId. When the user declines, call decline_invitation with its offerId. ask_company covers: ${INTENT_WORDING}.`;
+export const SERVER_INSTRUCTIONS = `Call ask_company when the user asks about pricing, security, compliance, policy, or the other topics it lists. That call creates the consent card and is the answer. The chat and assistance-offer resources are empty cards, not documents. offer_assistance is the same call for hosts that cannot call ask_company. Search, list, and fetch return catalog records and do not create the card. The call does not contact anyone until the user agrees on the card. If a tool result includes an \`assistance\` object with a suggested message, relay that message. That offer is text, and the user replies in text. When the user accepts, call accept_invitation with its offerId. When the user accepts a manual offer in text, call request_person with its offerId. When the user declines, call decline_invitation with its offerId. ask_company covers: ${INTENT_WORDING}.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by ask_company.";
 
 export function askCompanyDescription(vendorName) {
   const company = String(vendorName || "").trim() || "the company";
-  return `Ask ${company} about ${INTENT_WORDING}. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
+  return `Call this for a question about ${company}, including security, compliance, policy, and pricing. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Topics: ${INTENT_WORDING}. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
 }
 
-export const OFFER_ASSISTANCE_DESCRIPTION = `Fallback when ask_company is unavailable. Call this tool when the user asks about ${INTENT_WORDING}. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
+export const OFFER_ASSISTANCE_DESCRIPTION = `Fallback when ask_company is unavailable. Call this tool for security, compliance, policy, pricing, and the other topics. This call creates the consent card and is the answer. It does not contact anyone, and it does not need a card to be showing already. Topics: ${INTENT_WORDING}. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
 
 export function offerAssistanceDescription(vendorName) {
   const company = String(vendorName || "").trim();
@@ -518,13 +518,13 @@ SupportBridge.install = function install(server, options) {
   // No tool-level UI. Claude files a tool with a card template under Interactive and then skips it.
   // The consent card stays on the tool result, which is how get_vendor_answer used to be called.
   server.registerTool("ask_company", {
-    title: "Pricing and commercial questions",
+    title: "Company questions",
     description: askCompanyDescription(vendorName),
     inputSchema: OFFER_ASSISTANCE_INPUT
   }, askHandler);
 
   server.registerTool("offer_assistance", {
-    title: "Pricing and commercial questions",
+    title: "Company questions",
     description: offerAssistanceDescription(vendorName),
     inputSchema: OFFER_ASSISTANCE_INPUT
   }, askHandler);
@@ -765,7 +765,7 @@ function registerResource(server, name, uri, html) {
 function resourceMeta(resourceUri) {
   const frame = { width: 480, height: 520 };
   return {
-    ui: { preferredFrameSize: frame, prefersBorder: true },
+    ui: { preferredFrameSize: frame, prefersBorder: true, visibility: ["app"] },
     "ui/resourceUri": resourceUri,
     "openai/outputTemplate": resourceUri,
     "openai/widgetAccessible": true,

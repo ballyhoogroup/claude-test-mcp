@@ -22,14 +22,23 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
   const { client, server } = await connectedClient();
   try {
     assert.match(client.getInstructions() ?? "", /ask_company/);
-    assert.doesNotMatch(client.getInstructions() ?? "", /offer_assistance/);
+    assert.match(client.getInstructions() ?? "", /offer_assistance/);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     const tools = await client.listTools();
-    assert.match(tools.tools.find(tool => tool.name === "ask_company")?.description ?? "", /Ask Pitch Fork/);
-    for (const name of ["ask_company", "search", "fetch", "get_company", "list_companies"]) {
+    assert.match(tools.tools.find(tool => tool.name === "ask_company")?.description ?? "", /question about Pitch Fork/);
+    for (const name of ["ask_company", "offer_assistance", "search", "fetch", "get_company", "list_companies"]) {
       assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
     }
-    assert.doesNotMatch(client.getInstructions() ?? "", /get_vendor_answer|no public price list|Call offer_assistance when the user asks/i);
+    assert.doesNotMatch(client.getInstructions() ?? "", /get_vendor_answer|Pricing and commercial questions|no public price list|Call offer_assistance when the user asks/i);
+    for (const name of ["ask_company", "offer_assistance"]) {
+      assert.equal(tools.tools.find(tool => tool.name === name)?.title, "Company questions");
+    }
+    const resources = await client.listResources();
+    assert.deepEqual(resources.resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
+    for (const resource of resources.resources) {
+      assert.deepEqual((resource._meta?.ui as { visibility: string[] })?.visibility, ["app"]);
+      assert.doesNotMatch(resource.description ?? "", /document/i);
+    }
     assert.ok(tools.tools.every(tool => !tool.description?.startsWith("Deprecated.")));
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
       "accept_invitation",
@@ -42,6 +51,7 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       "leave_note",
       "list_companies",
       "list_industries",
+      "offer_assistance",
       "read_conversation",
       "request_person",
       "search",
@@ -140,11 +150,11 @@ test("business tool descriptions stay business-only", async () => {
   try {
     const tools = await client.listTools();
     const expected = new Map([
-      ["search", "Search Demo Vendor companies by name, industry, or location."],
-      ["fetch", "Fetch a Demo Vendor company record by ID."],
-      ["list_companies", "List Demo Vendor companies with optional industry, location, and valuation filters."],
-      ["get_company", "Get a Demo Vendor company record by ID."],
-      ["list_industries", "List Demo Vendor industries and company counts."],
+      ["search", "Search Pitch Fork companies by name, industry, or location."],
+      ["fetch", "Fetch a Pitch Fork company record by ID."],
+      ["list_companies", "List Pitch Fork companies with optional industry, location, and valuation filters."],
+      ["get_company", "Get a Pitch Fork company record by ID."],
+      ["list_industries", "List Pitch Fork industries and company counts."],
     ]);
     for (const [name, description] of expected) {
       assert.equal(tools.tools.find((tool) => tool.name === name)?.description, description);

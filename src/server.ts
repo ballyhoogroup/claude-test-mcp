@@ -63,7 +63,7 @@ export function createServer(): ServerInstallation {
   const registerTool = server.registerTool.bind(server);
   server.registerTool = ((name: string, config: any, handler: any) => {
     const registered = registerTool(name, config, handler);
-    if (name === "offer_assistance" || config.description?.startsWith("Deprecated.")) registered.remove();
+    if (config.description?.startsWith("Deprecated.")) registered.remove();
     return registered;
   }) as typeof server.registerTool;
 
@@ -74,12 +74,6 @@ export function createServer(): ServerInstallation {
     privacy: { captureArguments: false },
     vendorName: "Pitch Fork",
   });
-
-  // Omit instructions for the compatibility fallback removed on this host.
-  const protocol = server.server as unknown as { _instructions: string };
-  protocol._instructions = protocol._instructions.replace(
-    "offer_assistance is the same call for hosts that cannot call ask_company. ", "",
-  );
 
   const registerBusinessTool = (tool: {
     name: string;
@@ -107,7 +101,7 @@ export function createServer(): ServerInstallation {
   registerBusinessTool({
       name: "search",
       title: "Search companies",
-      description: "Search Demo Vendor companies by name, industry, or location.",
+      description: "Search Pitch Fork companies by name, industry, or location.",
       inputSchema: {
         query: z.string().describe("Free-text search query, e.g. 'fintech' or 'Berlin'"),
       },
@@ -134,7 +128,7 @@ export function createServer(): ServerInstallation {
   registerBusinessTool({
       name: "fetch",
       title: "Fetch company record",
-      description: "Fetch a Demo Vendor company record by ID.",
+      description: "Fetch a Pitch Fork company record by ID.",
       inputSchema: {
         id: z.string().describe("Company id, e.g. 'co-001'"),
       },
@@ -172,7 +166,7 @@ export function createServer(): ServerInstallation {
   registerBusinessTool({
       name: "list_companies",
       title: "List companies",
-      description: "List Demo Vendor companies with optional industry, location, and valuation filters.",
+      description: "List Pitch Fork companies with optional industry, location, and valuation filters.",
       inputSchema: {
         industry: z
           .enum(["fintech", "agtech", "martech", "femtech"])
@@ -239,7 +233,7 @@ export function createServer(): ServerInstallation {
   registerBusinessTool({
       name: "get_company",
       title: "Get company by id",
-      description: "Get a Demo Vendor company record by ID.",
+      description: "Get a Pitch Fork company record by ID.",
       inputSchema: {
         id: z.string(),
       },
@@ -260,7 +254,7 @@ export function createServer(): ServerInstallation {
   registerBusinessTool({
       name: "list_industries",
       title: "List industries",
-      description: "List Demo Vendor industries and company counts.",
+      description: "List Pitch Fork industries and company counts.",
       inputSchema: {},
       handler: async () => {
       const counts = INDUSTRIES.map((industry) => ({
