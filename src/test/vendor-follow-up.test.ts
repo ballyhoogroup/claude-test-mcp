@@ -3,32 +3,39 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 
-test("assistant consent click stays open through a tool-result repaint and restored widget state", async () => {
+test("SDK card uses one surface for live, note, and assistant offers", async () => {
   const source = readFileSync(new URL("../../within/sdk/index.mjs", import.meta.url), "utf8");
-  const stateCode = source.slice(source.indexOf("function widgetAgentOffer(){"), source.indexOf("function resultBags(result){"));
-  const renderStart = source.indexOf("function renderVendor(payload){");
-  const renderCode = source.slice(renderStart, source.indexOf("\nfunction ", renderStart + 1));
+  function extract(name: string) {
+    const start = source.indexOf(`function ${name}(`);
+    assert.ok(start >= 0, name);
+    const rest = source.slice(start);
+    const end = rest.slice(1).search(/\n(?:async )?function /);
+    return end < 0 ? rest : rest.slice(0, end + 1);
+  }
   const clickStart = source.indexOf("vaAccept.onclick=async()=>{");
-  const clickCode = source.slice(clickStart, source.indexOf("\n};", clickStart) + 3);
-  const node = () => ({ hidden: true, textContent: "", firstChild: { textContent: "" }, classList: { add() {}, remove() {}, toggle() {} }, focus() {} });
-  const sandbox: any = { window: { openai: { widgetState: {}, setWidgetState(state: unknown) { sandbox.window.openai.widgetState = state; } } },
-    agentFollowUpOffer: "", offerId: "", acceptTool: "", declineTool: "", pendingAction: false, settled: false, offerClosed: false,
-    fitFrame() {}, setBusy(busy: boolean) { sandbox.pendingAction = busy; } };
+  const click = source.slice(clickStart, source.indexOf("\n};", clickStart) + 3);
+  const node = () => ({ hidden: true, textContent: "", value: "", firstChild: { textContent: "" }, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, focus() {} });
+  const sandbox: any = { document: {}, offerId: "", acceptTool: "", declineTool: "", pendingAction: false, settled: false, offerClosed: false,
+    renderFacts() {}, setPill() {}, fitFrame() {}, setBusy(busy: boolean) { sandbox.pendingAction = busy; } };
   for (const name of source.matchAll(/(?:const|let) (\w+)=document.getElementById/g)) sandbox[name[1]] = node();
   const context = createContext(sandbox);
-  runInContext(stateCode + "\n" + renderCode + "\n" + clickCode, context);
-  const payload = { offer_id: "offer-one", kind: "agent", acceptTool: "talk_to_vendor_agent", direct_answer: "Saved company answer" };
-  sandbox.renderVendor(payload);
+  runInContext(extract("renderVendor") + "\n" + extract("openAgentChat") + "\n" + click, context);
+  sandbox.renderVendor({ offer_id: "live", state: "live", vendor_name: "Pitch Fork", rep: { name: "Sarah Teller", first_name: "Sarah" }, acceptTool: "request_assistance", direct_answer: "Company answer" });
+  assert.equal(sandbox.vaAcceptLabel.textContent, "Chat with Sarah");
+  assert.equal(sandbox.vaNote.hidden, false);
+  assert.equal(sandbox.vaCard.hidden, false);
+  assert.equal(sandbox.offerRootEl.hidden, true);
+  sandbox.renderVendor({ offer_id: "note", state: "async", vendor_name: "Pitch Fork", acceptTool: "file_escalation", direct_answer: "Company answer" });
+  assert.equal(sandbox.vaAcceptLabel.textContent, "Send note");
+  assert.equal(sandbox.vaDecline.textContent, "Not now");
+  assert.equal(sandbox.vaNote.hidden, false);
+  sandbox.renderVendor({ offer_id: "assistant", kind: "agent", acceptTool: "talk_to_vendor_agent", direct_answer: "Company answer" });
   assert.equal(sandbox.vaAgent.hidden, true);
   await sandbox.vaAccept.onclick();
   assert.equal(sandbox.vaAgent.hidden, false);
-  assert.equal(sandbox.window.openai.widgetState.agentFollowUpOffer, "offer-one");
-  sandbox.renderVendor(payload);
-  assert.equal(sandbox.vaAgent.hidden, false);
-  assert.equal(sandbox.vaAccept.hidden, true);
-  sandbox.agentFollowUpOffer = "";
-  sandbox.renderVendor(payload);
-  assert.equal(sandbox.vaAgent.hidden, false);
-  sandbox.renderVendor({ ...payload, offer_id: "different-offer" });
-  assert.equal(sandbox.vaAgent.hidden, true);
+  assert.equal(sandbox.vaAgentForm.hidden, false);
+  assert.equal(sandbox.vaActions.hidden, true);
+  assert.equal(sandbox.vaAnswer.hidden, true);
+  assert.equal(sandbox.vaCard.hidden, false);
+  assert.equal(sandbox.offerRootEl.hidden, true);
 });

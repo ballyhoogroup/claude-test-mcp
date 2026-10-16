@@ -174,7 +174,7 @@ export function asyncEscalationCopy(note) {
     cardNote: "They'll reply usually within a business day. Nothing is sent until you confirm.",
     draftNote: assistanceDraft(note),
     acceptLabel: "Send note",
-    declineLabel: "No thanks",
+    declineLabel: "Not now",
     acceptTool: "file_escalation",
     declineTool: "decline_escalation",
     sentTitle: `Sent to ${vendor}.`,
@@ -204,6 +204,22 @@ export function splitVendorAnswer(text) {
     context: supporting.join(" "),
     full_answer: full
   };
+}
+
+export function cardFacts(source) {
+  const raw = source && typeof source === "object" && !Array.isArray(source) ? source.facts : undefined;
+  if (!Array.isArray(raw)) return [];
+  const facts = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const label = String(item.label ?? "").trim();
+    const value = String(item.value ?? "").trim();
+    if (!label || !value) continue;
+    const unit = String(item.unit ?? "").trim();
+    facts.push(unit ? { label, value, unit } : { label, value });
+    if (facts.length === 3) break;
+  }
+  return facts;
 }
 
 export function nameInitials(name) {
@@ -241,12 +257,15 @@ function vendorCardFields(answer, subject) {
   const intentLabel = subject.intentLabel || "";
   const topic = subject.topic || (intentLabel ? intentLabel.toLowerCase() : "");
   const rep = repCard(subject.representativeName, subject.representativeRole, subject.available);
+  const facts = cardFacts(answer);
   return {
     ...splitVendorAnswer(answer?.text ?? answer),
     source_label: intentLabel ? `${intentLabel} docs` : "Vendor docs",
     vendor_name: vendorName,
     vendor_initials: nameInitials(vendorName),
     topic,
+    team: topic,
+    ...(facts.length ? { facts } : {}),
     ...(rep ? { rep } : {}),
     user_question: subject.userQuestion || "",
     offer_id: subject.offerId || ""
@@ -300,7 +319,7 @@ function vendorAnswerResult(payload) {
     copy.suggestedMessage = known
       ? `${known.name} at ${note.vendorName || "the vendor"} is offline right now. You can leave them a note above and they'll follow up. In the meantime I can keep going on this.`
       : `Nobody from ${note.vendorName || "the vendor"}'s ${topic} team is online right now. You can leave them a note above and they'll follow up. In the meantime I can keep going on this.`;
-    copy.acceptLabel = known ? `Send note to ${known.first_name}` : "Send note";
+    copy.acceptLabel = "Send note";
     return {
       content: [
         { type: "text", text: fields.direct_answer },
@@ -310,6 +329,8 @@ function vendorAnswerResult(payload) {
         answer,
         ...fields,
         kind: "escalation",
+        state: "async",
+        team: topic,
         assistance: { kind: "escalation", topic, ...(fields.rep ? { rep: fields.rep } : {}) },
         escalation: note,
         status: "awaiting_consent",
@@ -405,6 +426,8 @@ function vendorAnswerResult(payload) {
         answer,
         ...fields,
         kind: "live",
+        state: "live",
+        ...(firstName ? { first_name: firstName } : {}),
         assistance,
         status: "offered",
         offered: true,
@@ -593,14 +616,14 @@ SupportBridge.install = function install(server, options) {
     description: CONFIRM_ASSISTANCE_DESCRIPTION,
     inputSchema: OFFER_CONNECT_INPUT,
     _meta: chatMeta
-  }, async (args, extra) => confirmAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+  }, async (args, extra) => confirmAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId, noteArg(args)));
 
   server.registerTool("request_assistance", {
     title: "Request assistance",
     description: REQUEST_ASSISTANCE_DESCRIPTION,
     inputSchema: OFFER_CONNECT_INPUT,
     _meta: chatMeta
-  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId, noteArg(args)));
 
   server.registerTool("file_escalation", {
     title: "File escalation",
@@ -627,14 +650,14 @@ SupportBridge.install = function install(server, options) {
     description: "Deprecated alias of request_assistance.",
     inputSchema: OFFER_CONNECT_INPUT,
     _meta: chatMeta
-  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId, noteArg(args)));
 
   server.registerTool("request_person", {
     title: "Request a person",
     description: "Deprecated alias of request_assistance.",
     inputSchema: OFFER_CONNECT_INPUT,
     _meta: chatMeta
-  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId));
+  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeOfferArgs(args).offerId, noteArg(args)));
 
   server.registerTool("leave_note", {
     title: "Leave a note",
@@ -874,10 +897,15 @@ function answerNeedsRetry(result) {
   return Number(result.status) >= 500;
 }
 
-async function acceptOffer(baseUrl, apiKey, identity, offerId) {
+function noteArg(args) {
+  const note = String(args?.note ?? "").trim();
+  return note ? note.slice(0, 2000) : "";
+}
+
+async function acceptOffer(baseUrl, apiKey, identity, offerId, note) {
   const result = await serviceFetch(baseUrl, apiKey, `/v1/offers/${encodeURIComponent(offerId)}/accept`, {
     method: "POST",
-    body: identity
+    body: { ...identity, ...(note ? { note } : {}) }
   });
   if (!result?.conversation) {
     const status = result?.error ?? "offer_not_active";
@@ -920,21 +948,21 @@ function needsOfferAssistanceResult(message) {
   };
 }
 
-async function confirmAssistance(baseUrl, apiKey, identity, offerId) {
+async function confirmAssistance(baseUrl, apiKey, identity, offerId, note) {
   if (!offerId) {
     return needsOfferAssistanceResult(
       "No offer id was provided. Call get_vendor_answer with the topic and the user's question first. Do not start a chat without an offer."
     );
   }
-  return acceptOffer(baseUrl, apiKey, identity, offerId);
+  return acceptOffer(baseUrl, apiKey, identity, offerId, note);
 }
 
-async function requestAssistance(baseUrl, apiKey, identity, offerId) {
-  if (offerId) return acceptOffer(baseUrl, apiKey, identity, offerId);
+async function requestAssistance(baseUrl, apiKey, identity, offerId, note) {
+  if (offerId) return acceptOffer(baseUrl, apiKey, identity, offerId, note);
   const delivered = await deliverOffer(baseUrl, apiKey, identity);
   const open = delivered?.offer;
   if (open && (open.status === "pending" || open.status === "presented") && open.source === "manual") {
-    return acceptOffer(baseUrl, apiKey, identity, open.id);
+    return acceptOffer(baseUrl, apiKey, identity, open.id, note);
   }
   return needsOfferAssistanceResult(
     "No pending assistance offer was found for this session. Call get_vendor_answer with the topic and the user's question first. Then confirm with that offer id."
@@ -1461,150 +1489,145 @@ ${chatPanelStyles()}
 :where(button):focus-visible{outline:2px solid #2F7D4F;outline-offset:2px}
 #offer-root[hidden]{display:none}
 #vendor-card{
-  --va-bg:#fff; --va-text:#1f2a24; --va-muted:#6b776f; --va-border:#e3e6e4; --va-offer:#f3f8f5; --va-green:#176b43; --va-on:#fff;
-  display:block; width:100%; overflow:hidden; border:1px solid #e3e6e4; border-radius:12px;
+  display:block; width:100%; border:1px solid #d9ded9; border-radius:14px;
   background:#fff; color:#1f2a24;
-  font:400 14px/21px system-ui,"Segoe UI",sans-serif;
-  box-shadow:0 1px 2px rgba(20,30,25,.06);
+  font:400 14px/1.45 system-ui,"Segoe UI",sans-serif;
 }
 #vendor-card[hidden]{display:none}
-.va-head{
-  display:flex; align-items:center; justify-content:space-between; gap:16px; height:44px; margin:0; padding:0 24px;
-  background:#fafbfa; border-bottom:1px solid #eceeed;
-}
-.va-brand{display:flex; align-items:center; gap:8px; min-width:0}
+.va-region{padding:17px 20px}
+.va-region+.va-region{border-top:1px solid #e3e7e3}
+.va-head{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0}
 .va-badge{
-  display:grid; place-items:center; width:22px; height:22px; border-radius:6px; background:#176b43; color:#fff;
+  display:grid; place-items:center; flex:none; width:24px; height:24px; border-radius:6px; background:#0f7a3f; color:#fff;
   font:600 11px/1 system-ui,"Segoe UI",sans-serif;
 }
-.va-brand strong{font:600 14px/20px system-ui,"Segoe UI",sans-serif}
-.va-kicker{color:#6b776f; font:400 13px/18px system-ui,"Segoe UI",sans-serif}
-.va-source{display:flex; align-items:center; gap:6px; margin:0; color:#6b776f; font:400 13px/18px system-ui,"Segoe UI",sans-serif; white-space:nowrap}
-.va-source svg{flex:none}
-.va-answer{display:flex; flex-direction:column; gap:10px; padding:16px 24px 18px}
-#va-direct{margin:0; color:#1f2a24; font:600 15px/22px system-ui,"Segoe UI",sans-serif}
-#va-direct[hidden]{display:none}
-#va-context,#va-full{margin:0; color:#3d4a43; font:400 14px/21px system-ui,"Segoe UI",sans-serif; overflow-wrap:normal; word-break:normal}
-#va-context{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden}
-#va-context.is-open{display:block; -webkit-line-clamp:unset; overflow:visible}
-#va-context[hidden],#va-full[hidden],#va-more[hidden]{display:none}
+#va-vendor-name{font:600 15px/1.35 system-ui,"Segoe UI",sans-serif}
+.va-dot-sep{color:#a0a8a3; font-size:15px; line-height:1}
+.va-source{margin:0; color:#5f6a64; font:400 14px/1.35 system-ui,"Segoe UI",sans-serif}
+.va-answer{display:flex; flex-direction:column; align-items:flex-start; gap:12px}
+.va-answer[hidden]{display:none}
+.va-facts{display:flex; flex-wrap:wrap; gap:8px}
+.va-facts[hidden]{display:none}
+.va-chip{border:1px solid #dfe4df; border-radius:8px; padding:6px 10px; color:#1f2a24; font-size:13px; line-height:1.3}
+.va-chip-label,.va-chip-unit{color:#5f6a64}
+.va-chip strong{font-size:14px; font-weight:600}
+#va-body{
+  margin:0; color:#2b3630; font:400 15px/1.55 system-ui,"Segoe UI",sans-serif;
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden;
+}
+#va-body.is-open{display:block; -webkit-line-clamp:unset; overflow:visible}
 #va-more{
-  display:inline-flex; align-items:center; gap:4px; margin:0; padding:0; border:0; background:transparent;
-  color:#176b43; font:500 13px/18px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+  min-height:44px; margin:0; padding:10px 0; border:0; background:transparent; color:#0f7a3f;
+  font:600 14px/1.3 system-ui,"Segoe UI",sans-serif; cursor:pointer;
 }
-.va-offer{
-  display:flex; flex-direction:column; gap:12px; margin:0; padding:16px 24px 18px; border-top:1px solid #eceeed;
-  background:#f3f8f5;
-}
-.va-offer.is-note{background:#f6f6f3}
+#va-more[hidden]{display:none}
+.va-offer{display:flex; flex-direction:column; gap:10px; margin:0; background:transparent}
 .va-offer[hidden]{display:none}
-.va-rep{display:flex; align-items:flex-start; gap:12px}
-.va-avatar-wrap{position:relative; flex:none; width:40px; height:40px}
+.va-rep{display:flex; flex-wrap:wrap; align-items:flex-start; gap:12px}
+.va-avatar-wrap{position:relative; flex:none; width:36px; height:36px}
 .va-avatar{
-  display:grid; place-items:center; width:40px; height:40px; border-radius:20px; background:#d9e9df; color:#176b43;
-  font:600 14px/1 system-ui,"Segoe UI",sans-serif;
+  display:grid; place-items:center; width:36px; height:36px; border-radius:50%;
+  font:600 13px/1 system-ui,"Segoe UI",sans-serif;
 }
-.va-offer.is-note .va-avatar{background:#e6e8e3; color:#4f5d56}
-.va-offer.is-note .va-avatar.has-initials{color:#5c6962}
+.va-avatar.live{background:#e3ebe3; color:#2d5a3e}
+.va-avatar.async,.va-avatar.agent{background:#eef0ee; color:#5f6a64}
 #va-bubble{display:none}
-.va-offer.is-note .va-avatar:not(.has-initials) #va-bubble{display:block}
+.va-avatar.async #va-bubble{display:block}
+.va-avatar.async #va-initials{display:none}
 .va-dot{
-  position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border:2px solid #f3f8f5; border-radius:6px; background:#1f9d5a;
+  position:absolute; right:-1px; bottom:-1px; width:11px; height:11px; border-radius:50%; background:#0f7a3f;
+  box-shadow:0 0 0 2px #fff;
 }
-.va-dot.is-offline{background:#fff; border:2px solid #9aa49e}
 .va-dot[hidden]{display:none}
-#va-rep-heading{margin:0; color:#1f2a24; font:600 15px/22px system-ui,"Segoe UI",sans-serif}
-#va-rep-sub{margin:2px 0 0; color:#4f5d56; font:400 13px/18px system-ui,"Segoe UI",sans-serif}
-.va-question{margin:0; padding:9px 12px; border:1px solid #dfe8e2; border-radius:8px; background:#fff}
-.va-question[hidden]{display:none}
-.va-offer.is-note .va-question{display:none}
-#va-question-label{color:#6b776f; letter-spacing:.06em; font:600 11px/21px system-ui,"Segoe UI",sans-serif}
-#va-question-text{color:#1f2a24; font:italic 400 14px/21px system-ui,"Segoe UI",sans-serif}
-.va-note{display:none}
-.va-offer.is-note .va-note{display:block}
-.va-note[hidden],.va-offer.is-note .va-note[hidden]{display:none}
-#va-eyebrow{display:none; margin:0 0 2px; color:#6b776f; letter-spacing:.06em; font:600 11px/16px system-ui,"Segoe UI",sans-serif}
-.va-offer.is-note #va-eyebrow,.va-offer.is-agent #va-eyebrow{display:block}
-#va-eyebrow[hidden]{display:none}
-#va-note-label{display:block; margin:0 0 6px; color:#6b776f; letter-spacing:.06em; font:600 11px/16px system-ui,"Segoe UI",sans-serif}
+.va-person-copy{flex:1 1 200px; min-width:0}
+.va-name-line{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0}
+#va-rep-heading{margin:0; color:#1f2a24; font:600 15px/1.35 system-ui,"Segoe UI",sans-serif}
+.va-pill{border-radius:999px; padding:2px 8px; font:600 11px/1.4 system-ui,"Segoe UI",sans-serif}
+.va-pill.live{background:#e4f3e9; color:#0a5a2e}
+.va-pill.async,.va-pill.agent{background:#eef0ee; color:#5f6a64}
+.va-pill[hidden]{display:none}
+#va-rep-sub{margin:2px 0 0; color:#5f6a64; font:400 13px/1.4 system-ui,"Segoe UI",sans-serif}
+.va-sr{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+.va-note[hidden]{display:none}
 #va-note-text{
-  display:block; width:100%; height:64px; max-height:160px; box-sizing:border-box; resize:vertical;
-  padding:9px 12px; border:1px solid #dfe3dd; border-radius:8px; background:#fff; color:#1f2a24;
-  font:400 14px/21px system-ui,"Segoe UI",sans-serif;
+  display:block; width:100%; min-height:44px; box-sizing:border-box; resize:vertical; margin:0;
+  padding:10px 12px; border:1px solid #d9ded9; border-radius:8px; background:#fff; color:#1f2a24;
+  font:400 14px/1.45 system-ui,"Segoe UI",sans-serif;
 }
-#va-helper{margin:8px 0 0; color:#6b776f; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
-.va-actions{display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0}
-#va-accept{
-  display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 18px; border:0; border-radius:8px; background:#176b43; color:#fff;
-  font:600 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer;
+#va-helper{margin:0; color:#5f6a64; font:400 12.5px/1.4 system-ui,"Segoe UI",sans-serif}
+#va-helper:empty{display:none}
+.va-actions{display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:0}
+.va-actions[hidden]{display:none}
+#va-accept,#va-decline,#va-agent-send{min-height:44px; border:0; cursor:pointer; font-family:system-ui,"Segoe UI",sans-serif}
+#va-accept,#va-agent-send{
+  padding:11px 18px; border-radius:8px; background:#0f7a3f; color:#fff; font-size:14px; font-weight:600;
 }
-#va-plane{display:block}
-#va-decline{
-  height:40px; padding:0 12px; border:0; background:transparent; color:#3d4a43;
-  font:500 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer;
-}
+#va-decline{padding:11px 8px; background:transparent; color:#5f6a64; font-size:14px; font-weight:500}
 #va-accept:disabled,#va-decline:disabled{opacity:.5; cursor:not-allowed}
-#va-privacy{display:flex; align-items:center; gap:6px; margin:0 0 0 auto; color:#4f5d56; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
-#va-status{margin:0; color:#4f5d56; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+#va-status{margin:0; color:#5f6a64; font:400 12.5px/1.4 system-ui,"Segoe UI",sans-serif}
 #va-status:empty{display:none}
-#va-status.error{color:#A32D2D}
+#va-status.error{color:#8a2a2a}
 #va-agent[hidden]{display:none}
-#va-agent{display:flex; flex-direction:column; gap:10px; margin-top:4px}
-#va-agent-log{display:flex; flex-direction:column; gap:8px}
-.va-agent-line{margin:0}
-.va-agent-line.user{align-self:flex-end; max-width:92%}
-#va-agent-form{display:flex; gap:8px}
-#va-agent-form label{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)}
-#va-agent-input{flex:1; min-width:0; height:40px; margin:0; padding:0 10px; border:1px solid #e3e6e4; border-radius:8px; font:400 14px/20px system-ui,"Segoe UI",sans-serif}
-#va-agent-send{height:40px; margin:0; padding:0 14px; border:1px solid #176b43; border-radius:8px; background:#176b43; color:#fff; font:500 14px/20px system-ui,"Segoe UI",sans-serif; cursor:pointer}
-#va-agent-foot{margin:0; color:#6b776f; font:400 12px/16px system-ui,"Segoe UI",sans-serif}
+#va-agent-log{display:flex; flex-direction:column; gap:12px}
+.va-msg{display:flex; flex-direction:column; gap:4px; max-width:85%}
+.va-msg.user{align-self:flex-end; align-items:flex-end}
+.va-msg.assistant{align-self:flex-start; align-items:flex-start}
+.va-who{margin:0; color:#5f6a64; font:400 12.5px/1.3 system-ui,"Segoe UI",sans-serif}
+.va-bubble{margin:0; padding:10px 12px; border-radius:8px; font:400 14px/1.5 system-ui,"Segoe UI",sans-serif}
+.va-msg.assistant .va-bubble{border:1px solid #dfe4df; background:#fff; color:#2b3630}
+.va-msg.user .va-bubble{background:#e4f3e9; color:#1f2a24}
+#va-agent-form{display:flex; flex-direction:column; gap:6px}
+#va-agent-form[hidden]{display:none}
+.va-compose{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+#va-agent-input{
+  flex:1 1 180px; min-width:0; min-height:44px; margin:0; padding:10px 12px; border:1px solid #d9ded9; border-radius:8px;
+  background:#fff; color:#1f2a24; font:400 14px/1.4 system-ui,"Segoe UI",sans-serif;
+}
+#va-agent-foot{margin:0; color:#5f6a64; font:400 12.5px/1.4 system-ui,"Segoe UI",sans-serif}
 </style></head>
 <body${startInChat ? ' class="sb-chat-mode"' : ""}>
   <article id="vendor-card" hidden>
-    <header class="va-head">
-      <div class="va-brand">
-        <span id="va-vendor-badge" class="va-badge"></span>
-        <strong id="va-vendor-name"></strong>
-        <span class="va-kicker">Vendor answer</span>
-      </div>
-      <p id="va-source" class="va-source"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.2L13 5.3V14a.5.5 0 0 1-.5.5h-8A.5.5 0 0 1 4 14Z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9 1.8V5h3.2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><span id="va-source-text"></span></p>
+    <header class="va-region va-head">
+      <span id="va-vendor-badge" class="va-badge" aria-hidden="true"></span>
+      <strong id="va-vendor-name"></strong>
+      <span class="va-dot-sep" aria-hidden="true">·</span>
+      <p id="va-source" class="va-source">from <span id="va-source-text"></span></p>
     </header>
-    <div class="va-answer">
-      <p id="va-direct"></p>
-      <p id="va-context"></p>
-      <button id="va-more" type="button" hidden>Show full answer <svg width="13" height="13" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.2 6 8l4-3.8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button>
+    <div id="va-answer" class="va-region va-answer">
+      <div id="va-facts" class="va-facts" hidden></div>
+      <p id="va-body"></p>
+      <button id="va-more" type="button" hidden aria-expanded="false">Show full answer</button>
     </div>
-    <section id="va-offer" class="va-offer" hidden>
+    <section id="va-offer" class="va-region va-offer" hidden>
       <div class="va-rep">
-        <span class="va-avatar-wrap"><span id="va-avatar" class="va-avatar"><span id="va-initials"></span><svg id="va-bubble" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.2 4.2h11.6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.4L5 14.6V12.2H3.2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><span id="va-dot" class="va-dot" hidden></span></span>
-        <div>
-          <p id="va-eyebrow" hidden>HUMAN FOLLOW-UP</p>
-          <h2 id="va-rep-heading"></h2>
+        <span class="va-avatar-wrap"><span id="va-avatar" class="va-avatar" aria-hidden="true"><span id="va-initials"></span><svg id="va-bubble" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.2 4.2h11.6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.4L5 14.6V12.2H3.2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><span id="va-dot" class="va-dot" hidden></span></span>
+        <div class="va-person-copy">
+          <p class="va-name-line"><span id="va-rep-heading"></span> <span id="va-pill" class="va-pill" hidden></span></p>
           <p id="va-rep-sub"></p>
         </div>
       </div>
-      <div id="va-question" class="va-question" hidden><span id="va-question-label"></span><em id="va-question-text"></em></div>
       <div id="va-note" class="va-note" hidden>
-        <label id="va-note-label" for="va-note-text">YOUR NOTE, EDIT IF YOU LIKE</label>
-        <textarea id="va-note-text"></textarea>
-        <p id="va-helper"></p>
+        <label id="va-note-label" class="va-sr" for="va-note-text">Note</label>
+        <textarea id="va-note-text" rows="2"></textarea>
       </div>
-      <div class="va-actions">
-        <button id="va-accept" type="button"><svg id="va-plane" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 7.3 14.6 1.6 9.6 14.4 7.5 8.7Z" fill="currentColor"/></svg><span id="va-accept-label">Chat with support</span></button>
+      <p id="va-helper"></p>
+      <div id="va-actions" class="va-actions">
+        <button id="va-accept" type="button"><span id="va-accept-label">Chat with support</span></button>
         <button id="va-decline" type="button">Not now</button>
-        <p id="va-privacy"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><rect x="3" y="6" width="8" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 6V4.2a2 2 0 0 1 4 0V6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><span id="va-privacy-text"></span></p>
       </div>
       <p id="va-status" role="status"></p>
       <div id="va-agent" hidden>
-        <div id="va-agent-log"></div>
-        <form id="va-agent-form">
-          <label for="va-agent-input">Follow-up</label>
-          <input id="va-agent-input" type="text" maxlength="2000" placeholder="Ask a follow-up">
-          <button id="va-agent-send" type="submit">Send</button>
-        </form>
-        <p id="va-agent-foot">A person is not in this chat.</p>
+        <div id="va-agent-log" role="log" aria-live="polite"></div>
       </div>
     </section>
+    <form id="va-agent-form" class="va-region va-composer" hidden>
+      <div class="va-compose">
+        <label class="va-sr" for="va-agent-input">Follow-up</label>
+        <input id="va-agent-input" type="text" maxlength="2000" placeholder="Ask a follow-up">
+        <button id="va-agent-send" type="submit">Send</button>
+      </div>
+      <p id="va-agent-foot">A person is not in this chat.</p>
+    </form>
   </article>
   <section id="offer-root" class="card" aria-labelledby="offer-title">
     <p class="eyebrow" id="eyebrow">Support available</p>
@@ -1641,68 +1664,32 @@ const vaCard=document.getElementById("vendor-card");
 const vaVendorBadge=document.getElementById("va-vendor-badge");
 const vaVendorName=document.getElementById("va-vendor-name");
 const vaSourceText=document.getElementById("va-source-text");
-const vaDirect=document.getElementById("va-direct");
-const vaContext=document.getElementById("va-context");
+const vaAnswer=document.getElementById("va-answer");
+const vaFacts=document.getElementById("va-facts");
+const vaBody=document.getElementById("va-body");
 const vaMore=document.getElementById("va-more");
 const vaOffer=document.getElementById("va-offer");
 const vaAvatar=document.getElementById("va-avatar");
 const vaInitials=document.getElementById("va-initials");
 const vaDot=document.getElementById("va-dot");
-const vaEyebrow=document.getElementById("va-eyebrow");
 const vaRepHeading=document.getElementById("va-rep-heading");
+const vaPill=document.getElementById("va-pill");
 const vaRepSub=document.getElementById("va-rep-sub");
-const vaQuestion=document.getElementById("va-question");
-const vaQuestionLabel=document.getElementById("va-question-label");
-const vaQuestionText=document.getElementById("va-question-text");
 const vaNote=document.getElementById("va-note");
 const vaNoteLabel=document.getElementById("va-note-label");
 const vaNoteText=document.getElementById("va-note-text");
 const vaHelper=document.getElementById("va-helper");
+const vaActions=document.getElementById("va-actions");
 const vaAccept=document.getElementById("va-accept");
 const vaAcceptLabel=document.getElementById("va-accept-label");
 const vaDecline=document.getElementById("va-decline");
-const vaPrivacyText=document.getElementById("va-privacy-text");
 const vaStatus=document.getElementById("va-status");
 const vaAgent=document.getElementById("va-agent");
 const vaAgentLog=document.getElementById("va-agent-log");
 const vaAgentForm=document.getElementById("va-agent-form");
 const vaAgentInput=document.getElementById("va-agent-input");
-let vaShort="";
 let vaFull="";
-let vaContextText="";
 let vaExpanded=false;
-let vaUserQuestion="";
-let agentFollowUpOffer="";
-function widgetAgentOffer(){
-  try{
-    const state=window.openai&&window.openai.widgetState;
-    return state&&typeof state.agentFollowUpOffer==="string"?state.agentFollowUpOffer:"";
-  }catch(error){return "";}
-}
-function rememberAgentFollowUp(id){
-  agentFollowUpOffer=id||"";
-  try{
-    const openai=window.openai;
-    if(openai&&typeof openai.setWidgetState==="function"){
-      const next=Object.assign({}, openai.widgetState||{}, {agentFollowUpOffer:agentFollowUpOffer});
-      const saved=openai.setWidgetState(next);
-      if(saved&&typeof saved.then==="function") saved.catch(()=>{});
-    }
-  }catch(error){}
-}
-function agentFollowUpOpen(id){
-  return Boolean(id)&&(agentFollowUpOffer===id||widgetAgentOffer()===id);
-}
-function showAgentFollowUp(){
-  vaAgent.hidden=false;
-  vaAccept.hidden=true;
-  vaDecline.hidden=true;
-  vaQuestion.hidden=true;
-  vaNote.hidden=true;
-  vaPrivacyText.textContent="";
-  vaStatus.classList.remove("error");
-  vaStatus.textContent="";
-}
 function resultBags(result){
   if(!result||typeof result!=="object")return [];
   return [result.structuredContent,result.toolOutput,result.toolResponseMetadata,result.result,result].filter(bag=>bag&&typeof bag==="object");
@@ -1806,102 +1793,102 @@ function setBusy(busy){
   if(vaAccept) vaAccept.disabled=locked;
   if(vaDecline) vaDecline.disabled=locked;
 }
+function renderFacts(facts){
+  vaFacts.replaceChildren();
+  const items=Array.isArray(facts)?facts.slice(0,3):[];
+  const usable=items.filter(item=>item&&String(item.label||"").trim()&&String(item.value||"").trim());
+  vaFacts.hidden=!usable.length;
+  for(const item of usable){
+    const chip=document.createElement("span");
+    chip.className="va-chip";
+    const label=document.createElement("span");
+    label.className="va-chip-label";
+    label.textContent=String(item.label).trim();
+    const value=document.createElement("strong");
+    value.textContent=String(item.value).trim();
+    chip.append(label, document.createTextNode(" "), value);
+    const unit=String(item.unit||"").trim();
+    if(unit){
+      const unitEl=document.createElement("span");
+      unitEl.className="va-chip-unit";
+      unitEl.textContent=" "+unit;
+      chip.append(unitEl);
+    }
+    vaFacts.append(chip);
+  }
+}
+function setPill(mode,text){
+  vaPill.hidden=!text;
+  vaPill.textContent=text||"";
+  vaPill.classList.remove("live","async","agent");
+  if(text) vaPill.classList.add(mode);
+}
 function renderVendor(payload){
   offerRootEl.hidden=true;
   vaCard.hidden=false;
   const rep=payload.rep&&typeof payload.rep==="object"?payload.rep:{};
   const vendorName=payload.vendor_name||payload.vendorName||"";
+  const topic=payload.topic||String(payload.intentLabel||"this").toLowerCase();
+  const team=payload.team||topic;
   vaVendorBadge.textContent=payload.vendor_initials||"";
   vaVendorName.textContent=vendorName;
   vaSourceText.textContent=payload.source_label||"Vendor docs";
-  vaShort=payload.direct_answer||"";
-  vaContextText=payload.context||"";
-  vaFull=payload.full_answer||vaShort;
+  renderFacts(payload.facts);
+  vaFull=payload.full_answer||payload.direct_answer||"";
   vaExpanded=false;
-  vaDirect.hidden=false;
-  vaDirect.textContent=vaShort;
-  vaContext.classList.remove("is-open");
-  vaContext.hidden=!vaContextText;
-  vaContext.textContent=vaContextText;
-  vaMore.hidden=vaFull.length<=vaShort.length;
-  vaMore.firstChild.textContent="Show full answer ";
+  vaBody.classList.remove("is-open");
+  vaBody.textContent=vaFull;
+  vaMore.hidden=vaFull.length<=180;
+  vaMore.textContent="Show full answer";
+  vaMore.setAttribute("aria-expanded","false");
+  vaAnswer.hidden=false;
   offerId=payload.offer_id||payload.offerId||payload.escalationOfferId||"";
   if(payload.acceptTool) acceptTool=payload.acceptTool;
   if(payload.declineTool) declineTool=payload.declineTool;
   const assistance=payload.assistance&&typeof payload.assistance==="object"?payload.assistance:{};
-  const kind=assistance.kind||payload.kind||(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation");
-  const note=kind==="escalation"&&Boolean(offerId);
-  vaOffer.classList.toggle("is-note", note);
-  vaOffer.classList.toggle("is-agent", kind==="agent");
+  const kind=payload.state==="async"?"escalation":(payload.state==="live"?"live":(assistance.kind||payload.kind||(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation")));
+  const mode=kind==="agent"?"agent":(kind==="escalation"?"async":"live");
   vaOffer.hidden=!offerId;
-  const topic=payload.topic||String(payload.intentLabel||"this").toLowerCase();
-  vaUserQuestion=payload.user_question||"";
-  const keepAgent=kind==="agent"&&agentFollowUpOpen(offerId);
-  if(keepAgent) agentFollowUpOffer=offerId;
-  vaAgent.hidden=!keepAgent;
-  vaAccept.hidden=keepAgent;
-  vaDecline.hidden=keepAgent;
-  if(kind==="agent"){
-    vaEyebrow.hidden=false;
-    vaEyebrow.textContent="VENDOR ASSISTANT";
-    vaNote.hidden=true;
-    vaQuestion.hidden=true;
-    vaAvatar.classList.add("has-initials");
+  vaAgent.hidden=true;
+  vaAgentForm.hidden=true;
+  vaActions.hidden=false;
+  vaAccept.hidden=false;
+  vaDecline.hidden=false;
+  vaDecline.textContent="Not now";
+  vaAvatar.classList.remove("live","async","agent");
+  vaAvatar.classList.add(mode);
+  const first=payload.first_name||rep.first_name||String(rep.name||"").split(" ")[0];
+  if(mode==="agent"){
     vaInitials.textContent=payload.vendor_initials||"A";
     vaDot.hidden=true;
     vaRepHeading.textContent="Vendor assistant";
+    setPill("agent","Assistant");
     vaRepSub.textContent="No one from the team is taking this. The assistant answers from the saved context.";
-    vaAcceptLabel.textContent=payload.acceptLabel||"Talk to the assistant";
-    vaDecline.textContent=payload.declineLabel||"Not now";
-    vaPrivacyText.textContent=keepAgent?"":"Nothing starts until you choose Talk to the assistant.";
-    if(keepAgent){
-      vaQuestion.hidden=true;
-      vaNote.hidden=true;
-    }
-  }else if(note){
-    const first=rep.first_name||String(rep.name||"").split(" ")[0];
-    const known=Boolean(rep.name)&&rep.available===false;
-    vaEyebrow.hidden=false;
-    vaEyebrow.textContent="HUMAN FOLLOW-UP";
-    vaNote.hidden=false;
-    vaQuestion.hidden=true;
-    vaAvatar.classList.toggle("has-initials", known);
-    vaInitials.textContent=known?(rep.initials||""):"";
-    vaDot.hidden=!known;
-    vaDot.classList.toggle("is-offline", known);
-    vaRepHeading.textContent=known?("Leave "+rep.name+" a note about "+topic):("Ask "+(vendorName||"the vendor")+" about "+topic);
-    vaRepSub.textContent=known
-      ?(first+" is your account contact at "+(vendorName||"the vendor")+". They're offline right now and usually replies by the next business day.")
-      :("No one on the "+topic+" team is online right now. They usually reply within a business day.");
-    vaNoteLabel.textContent=known?("YOUR NOTE TO "+first.toUpperCase()+", EDIT IF YOU LIKE"):"YOUR NOTE, EDIT IF YOU LIKE";
-    if(document.activeElement!==vaNoteText) vaNoteText.value=payload.user_question||"";
-    vaHelper.textContent=known
-      ?(first+" sees this note and your name from this session. They don't see the rest of your chat.")
-      :((vendorName||"The vendor")+" sees this note and your name from this session. They don't see the rest of your chat.");
-    vaAcceptLabel.textContent=payload.acceptLabel||(known?"Send note to "+first:"Send note");
-    vaDecline.textContent=payload.declineLabel||"No thanks";
-    vaPrivacyText.textContent="Nothing is sent until you choose Send note";
-  }else{
-    vaEyebrow.hidden=true;
     vaNote.hidden=true;
-    vaAvatar.classList.add("has-initials");
+    vaHelper.textContent="Nothing starts until you choose Talk to the assistant.";
+    vaAcceptLabel.textContent=payload.acceptLabel||"Talk to the assistant";
+  }else if(mode==="async"){
+    vaInitials.textContent="";
+    vaDot.hidden=true;
+    vaRepHeading.textContent=(vendorName||"The vendor")+" "+team+" team";
+    setPill("async","Replies within a business day");
+    vaRepSub.textContent="No one is online right now. Leave a note and they will follow up.";
+    vaNote.hidden=false;
+    vaNoteLabel.textContent="Note to "+(vendorName||"the vendor");
+    if(document.activeElement!==vaNoteText) vaNoteText.value=payload.user_question||"";
+    vaHelper.textContent=(vendorName||"The vendor")+" sees only this note and your name. Nothing is sent until you click.";
+    vaAcceptLabel.textContent="Send note";
+  }else{
     vaInitials.textContent=rep.initials||payload.vendor_initials||"";
-    vaDot.hidden=rep.available!==true;
-    vaDot.classList.remove("is-offline");
-    const first=rep.first_name||String(rep.name||"").split(" ")[0];
-    const ask=payload.acceptLabel||(first?"Chat with "+first:"Chat with support");
-    vaAcceptLabel.textContent=ask;
-    vaDecline.textContent=payload.declineLabel||"Not now";
-    vaPrivacyText.textContent="Nothing is sent until you choose "+ask+".";
-    vaRepHeading.textContent=rep.name?rep.name+" can help with "+topic:(payload.cardTitle||"Support can help with "+topic);
-    const role=rep.role||rep.title||"";
-    const place=role?role+" at "+(vendorName||"the vendor"):(vendorName||"");
-    const presence=rep.available===true?"Online now":"";
-    vaRepSub.textContent=[place,presence].filter(Boolean).join(". ")+(place||presence?".":"");
-    const question=payload.user_question||"";
-    vaQuestion.hidden=!question;
-    vaQuestionLabel.textContent=(first||"SUPPORT").toUpperCase()+" WILL SEE";
-    vaQuestionText.textContent=question?'"'+question+'"':"";
+    vaDot.hidden=false;
+    vaRepHeading.textContent=rep.name||first||"Support";
+    setPill("live","Online");
+    vaRepSub.textContent="Representative at "+(vendorName||"the vendor")+", can help with "+topic;
+    vaNote.hidden=false;
+    vaNoteLabel.textContent="Note to "+(first||vendorName||"support");
+    if(document.activeElement!==vaNoteText) vaNoteText.value=payload.user_question||"";
+    vaHelper.textContent=(first||"They")+" sees only this note and your name. Nothing is sent until you click.";
+    vaAcceptLabel.textContent=payload.acceptLabel||(first?"Chat with "+first:"Chat with support");
   }
   if(!pendingAction) setBusy(false);
   fitFrame();
@@ -1995,21 +1982,19 @@ declineEl.onclick=async()=>{
 };
 vaMore.onclick=()=>{
   vaExpanded=!vaExpanded;
-  if(vaExpanded){
-    vaDirect.hidden=true;
-    vaContext.hidden=false;
-    vaContext.classList.add("is-open");
-    vaContext.textContent=vaFull;
-    vaMore.firstChild.textContent="Show less ";
-  }else{
-    vaDirect.hidden=false;
-    vaContext.classList.remove("is-open");
-    vaContext.hidden=!vaContextText;
-    vaContext.textContent=vaContextText;
-    vaMore.firstChild.textContent="Show full answer ";
-  }
+  vaBody.classList.toggle("is-open", vaExpanded);
+  vaMore.textContent=vaExpanded?"Show less":"Show full answer";
+  vaMore.setAttribute("aria-expanded", vaExpanded?"true":"false");
   fitFrame();
 };
+function openAgentChat(){
+  vaAnswer.hidden=true;
+  vaNote.hidden=true;
+  vaHelper.textContent="";
+  vaActions.hidden=true;
+  vaAgent.hidden=false;
+  vaAgentForm.hidden=false;
+}
 async function sendAgent(text){
   const cleaned=String(text||"").trim();
   if(!cleaned){
@@ -2029,13 +2014,20 @@ async function sendAgent(text){
   }
   vaAgentLog.replaceChildren();
   for(const message of messages){
-    const line=document.createElement("p");
-    line.className="va-agent-line"+(message.role==="user"?" user":"");
-    line.textContent=(message.role==="user"?"You: ":"Assistant: ")+String(message.text||"");
-    vaAgentLog.append(line);
+    const row=document.createElement("div");
+    const mine=message.role==="user";
+    row.className="va-msg "+(mine?"user":"assistant");
+    const who=document.createElement("p");
+    who.className="va-who";
+    who.textContent=mine?"You":"Vendor assistant";
+    const bubble=document.createElement("p");
+    bubble.className="va-bubble";
+    bubble.textContent=String(message.text||"");
+    row.append(who, bubble);
+    vaAgentLog.append(row);
   }
-  rememberAgentFollowUp(offerId);
-  showAgentFollowUp();
+  openAgentChat();
+  vaStatus.classList.remove("error");
   vaStatus.textContent=payload.configured===false?"Repeating the saved answer. No model key is set on this service.":"";
   vaAgentInput.value="";
   settled=false;
@@ -2050,15 +2042,15 @@ vaAccept.onclick=async()=>{
   vaStatus.textContent=acceptTool==="file_escalation"?"Sending…":"Connecting…";
   try{
     if(acceptTool==="talk_to_vendor_agent"){
-      rememberAgentFollowUp(offerId);
-      showAgentFollowUp();
+      openAgentChat();
+      vaStatus.textContent="";
       setBusy(false);
       vaAgentInput.focus();
       fitFrame();
       return;
     }
     const args={offer_id:offerId,offerId:offerId};
-    if(acceptTool==="file_escalation") args.note=vaNoteText.value.trim();
+    if(!vaNote.hidden) args.note=vaNoteText.value.trim();
     const result=await callTool(acceptTool,args);
     if(acceptTool==="file_escalation"){
       const filed=statusOf(result);
@@ -2066,11 +2058,11 @@ vaAccept.onclick=async()=>{
         settled=true;
         offerClosed=true;
         vaRepHeading.textContent=sentTitle||"Sent.";
-        vaQuestion.hidden=true;
+        setPill("","");
+        vaRepSub.textContent="";
         vaNote.hidden=true;
-        vaAccept.hidden=true;
-        vaDecline.hidden=true;
-        vaPrivacyText.textContent="";
+        vaHelper.textContent="";
+        vaActions.hidden=true;
         vaStatus.textContent="";
         setBusy(true);
         fitFrame();
@@ -2102,7 +2094,6 @@ vaDecline.onclick=async()=>{
   vaStatus.textContent="Declining…";
   try{
     await callTool(declineTool,{offer_id:offerId,offerId:offerId});
-    rememberAgentFollowUp("");
     settled=true;
     offerClosed=true;
     stopPolling();
