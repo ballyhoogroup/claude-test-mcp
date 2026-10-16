@@ -1,6 +1,6 @@
 /** Shared MCP activity redaction, safe argument tokens, and customer-job lead lines. */
 
-import { STANDARD_ASSISTANCE_INTENTS, intentById } from "./intents.mjs";
+import { classifyTopicText, intentById } from "./intents.mjs";
 
 const SECRET_KEY = /secret|password|token|api[-_]?key|authorization|cookie|email|phone|ssn|card|cvv|cvc|pan/i;
 const FREE_TEXT_KEY = /^(query|q|prompt|text|message|content|body|issuesummary|issue_summary|search|input|notes?|comment|description|name|fullname|address|subject)$/i;
@@ -178,6 +178,42 @@ export function humanizedActivityLine(row) {
   return "";
 }
 
+/** Reduce a tool result to a count. JSON bodies and long replies stay out of the summary line. */
+export function resultDigest(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return { shown: null, total: null, reply: "" };
+  if (text.startsWith("{") || text.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(text);
+      const bag = Array.isArray(parsed) ? { count: parsed.length } : parsed;
+      if (!bag || typeof bag !== "object") return { shown: null, total: null, reply: "" };
+      return { shown: firstNumber(bag, ["count", "shown", "returned"]), total: firstNumber(bag, ["totalMatches", "total", "totalCount"]), reply: "" };
+    } catch {
+      return { shown: null, total: null, reply: "" };
+    }
+  }
+  const found = text.match(/\bFound\s+(\d+)\b/i);
+  const total = text.match(/\b(?:of|totalMatches)\s*[:=]?\s*(\d+)\b/i);
+  if (found) {
+    return { shown: Number(found[1]), total: total ? Number(total[1]) : null, reply: "" };
+  }
+  return { shown: null, total: null, reply: text };
+}
+
+export function digestLine(digest) {
+  if (!digest || digest.shown == null) return "";
+  if (digest.total != null && digest.total !== digest.shown) return `${digest.shown} of ${digest.total} shown`;
+  return `${digest.shown} shown`;
+}
+
+function firstNumber(bag, keys) {
+  for (const key of keys) {
+    const value = Number(bag[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
 /** Collapse consecutive same tool + safe-token fingerprint into beats with count. */
 export function collapseActivityBeats(activity) {
   const rows = Array.isArray(activity) ? activity.filter(Boolean) : [];
@@ -221,27 +257,11 @@ function eventGist(row) {
   return argumentPreview({ query: row?.gist });
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Intent named by an id or by a gist hitting the assistance word lists. Descriptions are ignored. */
+/** Intent named by an id or by a gist hitting the assistance topics. Descriptions are ignored. */
 export function intentFromText(value) {
   const text = String(value ?? "");
   if (!text.trim()) return null;
-  let best = null;
-  let bestAt = Infinity;
-  for (const intent of STANDARD_ASSISTANCE_INTENTS) {
-    for (const word of intent.words ?? []) {
-      const pattern = new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(word)}(?:[^A-Za-z0-9]|$)`, "i");
-      const match = pattern.exec(text);
-      if (match && match.index < bestAt) {
-        bestAt = match.index;
-        best = intent;
-      }
-    }
-  }
-  return best;
+  return intentById(classifyTopicText(text));
 }
 
 function isCompanySearch(row) {
@@ -254,13 +274,17 @@ function isCompanySearch(row) {
 function askedSentence(intent) {
   switch (intent?.id) {
     case "pricing": return "Asked about pricing.";
-    case "purchase": return "Asked about purchasing.";
-    case "demo_or_pilot": return "Asked about a demo.";
+    case "upgrade": return "Asked about an upgrade.";
+    case "demo": return "Asked about a demo.";
+    case "trial": return "Asked about a trial.";
     case "enterprise": return "Asked about enterprise options.";
     case "implementation": return "Asked about implementation.";
-    case "security_compliance": return "Asked about security.";
-    case "billing_payment": return "Asked about billing.";
-    case "cancellation_downgrade": return "Asked about cancellation.";
+    case "security": return "Asked about security.";
+    case "billing": return "Asked about billing.";
+    case "cancellation": return "Asked about cancellation.";
+    case "renewal": return "Asked about renewal.";
+    case "competitive": return "Asked about a comparison.";
+    case "buying_process": return "Asked about the buying process.";
     default: return "Asked for a person.";
   }
 }
@@ -330,19 +354,23 @@ function titleSentence(rows) {
 
 function assistanceIntent(row) {
   if (String(row?.toolName ?? "") !== "offer_assistance") return null;
-  return intentById(row?.tokens?.intent) || intentFromText(eventGist(row)) || intentById("purchase");
+  return intentById(row?.tokens?.intent) || intentFromText(eventGist(row)) || intentById("demo");
 }
 
 function interestPhrase(intent) {
   switch (intent?.id) {
     case "pricing": return "pricing";
-    case "purchase": return "purchasing";
-    case "demo_or_pilot": return "a demo";
+    case "upgrade": return "an upgrade";
+    case "demo": return "a demo";
+    case "trial": return "a trial";
     case "enterprise": return "enterprise options";
     case "implementation": return "implementation";
-    case "security_compliance": return "security";
-    case "billing_payment": return "billing";
-    case "cancellation_downgrade": return "cancellation";
+    case "security": return "security";
+    case "billing": return "billing";
+    case "cancellation": return "cancellation";
+    case "renewal": return "renewal";
+    case "competitive": return "a comparison";
+    case "buying_process": return "the buying process";
     default: return "help";
   }
 }
@@ -350,13 +378,17 @@ function interestPhrase(intent) {
 function goalClause(intent) {
   switch (intent?.id) {
     case "pricing": return "trying to find the price";
-    case "purchase": return "trying to buy";
-    case "demo_or_pilot": return "trying to see a demo";
+    case "upgrade": return "trying to upgrade";
+    case "demo": return "trying to see a demo";
+    case "trial": return "trying to start a trial";
     case "enterprise": return "trying to sort out enterprise terms";
     case "implementation": return "trying to figure out implementation";
-    case "security_compliance": return "trying to check security";
-    case "billing_payment": return "trying to sort out a bill";
-    case "cancellation_downgrade": return "trying to cancel or downgrade";
+    case "security": return "trying to check security";
+    case "billing": return "trying to sort out a bill";
+    case "cancellation": return "trying to cancel or downgrade";
+    case "renewal": return "trying to sort out a renewal";
+    case "competitive": return "trying to compare options";
+    case "buying_process": return "trying to sort out budget and timing";
     default: return "trying to reach a person";
   }
 }

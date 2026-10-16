@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer } from "../server.js";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+process.env.COMPANY_ACCESS_STORE_PATH = join(mkdtempSync(join(tmpdir(), "pitch-mcp-test-")), "access.json");
+const { createServer } = await import("../server.js");
 
 process.env.SUPPORTBRIDGE_API_KEY = "sb_test_demo_vendor";
 process.env.SUPPORTBRIDGE_URL = "https://supportbridge-service.invalid";
@@ -25,6 +29,10 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     assert.doesNotMatch(client.getInstructions() ?? "", /ask_company|Company questions|Call offer_assistance when the user asks/i);
     const tools = await client.listTools();
+    for (const phrase of ["a renewal", "a competitive comparison", "budget and timing"]) {
+      assert.ok(tools.tools.find(tool => tool.name === "get_vendor_answer")?.description?.includes(phrase), phrase);
+      assert.ok(client.getInstructions()?.includes(phrase), phrase);
+    }
     const expectedSupport = new Map([
       ["get_vendor_answer", "Vendor answer"],
       ["talk_to_vendor_agent", "Talk to the vendor assistant"],
