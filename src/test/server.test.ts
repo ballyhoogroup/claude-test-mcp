@@ -36,7 +36,6 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
     const expectedSupport = new Map([
       ["get_vendor_answer", "Vendor answer"],
       ["talk_to_vendor_agent", "Talk to the vendor assistant"],
-      ["offer_assistance", "Pricing and commercial questions"],
       ["confirm_assistance", "Confirm assistance"],
       ["request_assistance", "Request assistance"],
       ["file_escalation", "File escalation"],
@@ -52,7 +51,8 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
     for (const [name, title] of expectedSupport) {
       assert.equal(tools.tools.find(tool => tool.name === name)?.title, title);
     }
-    assert.equal(tools.tools.find(tool => tool.name === "offer_assistance")?._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
+    assert.ok(!tools.tools.some(tool => tool.name === "offer_assistance"));
+    assert.doesNotMatch(client.getInstructions() ?? "", /offer_assistance/);
     for (const name of ["search", "fetch", "get_company", "list_companies", "list_industries"]) {
       assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
       assert.match(tools.tools.find(tool => tool.name === name)?.description ?? "", /Pitch Fork/);
@@ -97,11 +97,12 @@ test("pricing text in a business tool does not create or append an assistance of
   }
 });
 
-test("offer_assistance returns the assistance card", async () => {
+test("get_vendor_answer returns the assistance card", async () => {
   globalThis.fetch = async (input) => {
     const url = String(input);
-    if (url.endsWith("/v1/offers/intent")) {
+    if (url.endsWith("/v1/answers")) {
       return Response.json({
+        answer: { text: "Ask Pitch Fork for a tailored quote." },
         offer: {
           id: "offer-pricing-1",
           intent: "pricing",
@@ -120,12 +121,12 @@ test("offer_assistance returns the assistance card", async () => {
   const { client, server } = await connectedClient();
   try {
     const result = await client.callTool({
-      name: "offer_assistance",
-      arguments: { intent: "pricing", issueSummary: "Customer asked about pricing." },
+      name: "get_vendor_answer",
+      arguments: { topic: "pricing", question: "Customer asked about pricing." },
     });
     assert.equal(result.isError, undefined);
     assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
-    assert.match(JSON.stringify(result.content), /Sarah can help with pricing now/);
+    assert.match(JSON.stringify(result.content), /Sarah can help with pricing/);
   } finally {
     globalThis.fetch = async () => Response.json({});
     await client.close();
@@ -220,7 +221,7 @@ test("legacy support names are absent and cannot be called", async () => {
     const { tools } = await client.listTools();
     const names = tools.map(tool => tool.name);
     assert.equal(new Set(names).size, names.length);
-    for (const name of ["ask_company", "show_assistance_offer", "accept_invitation", "request_person", "leave_note", "decline_invitation", "read_conversation", "send_to_person", "end_conversation", "get_invitation"]) {
+    for (const name of ["offer_assistance", "ask_company", "show_assistance_offer", "accept_invitation", "request_person", "leave_note", "decline_invitation", "read_conversation", "send_to_person", "end_conversation", "get_invitation"]) {
       assert.ok(!names.includes(name), name);
       const result = await client.callTool({ name, arguments: {} });
       assert.equal(result.isError, true, name);
@@ -243,5 +244,19 @@ test("vendor answer labels live contact by first name and reopens an existing co
     assert.equal((reopened.structuredContent as Record<string, unknown>)?.offered, false);
     assert.equal((reopened.structuredContent as Record<string, unknown>)?.conversationId, "existing-chat");
     assert.match(JSON.stringify(reopened.content), /already have a live chat/);
+  } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
+});
+
+test("vendor answer failure returns an unavailable message without contacting anyone", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = async input => { calls.push(String(input)); return Response.json({ error: "unavailable" }, { status: 503 }); };
+  const { client, server } = await connectedClient();
+  try {
+    const result = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "What does it cost?" } });
+    assert.equal(result.isError, true);
+    assert.match(JSON.stringify(result.content), /answer could not be loaded/i);
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(url => url.endsWith("/v1/answers")));
+    assert.match(client.getInstructions() ?? "", /Do not guess a price or plan, and do not contact anyone/);
   } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
 });

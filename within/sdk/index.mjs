@@ -10,9 +10,7 @@ import {
 } from "../activity.mjs";
 import {
   ASSISTANCE_INTENT_IDS,
-  STANDARD_ASSISTANCE_INTENTS,
   intentById,
-  normalizeAssistanceArgs,
   normalizeOfferArgs
 } from "../intents.mjs";
 
@@ -32,7 +30,7 @@ const OFFER_CONNECT_INPUT = z.object({
   offerId: looseField("Offer id (camelCase). Same as offer_id.")
 }).passthrough();
 
-/** Loose offer_assistance schema: synonyms, missing summary, and extras (name/email) are fine. */
+/** Loose ask_company schema: synonyms, a missing summary, and extras (name/email) are accepted. */
 const OFFER_ASSISTANCE_INPUT = z.object({
   intent: looseField(`Business intent id or free text. Preferred ids: ${ASSISTANCE_INTENT_IDS.join(", ")}. Synonyms like Pricing or support are accepted.`),
   issueSummary: looseField("Short summary of the user request for the consent card. Optional; a default is used when omitted.")
@@ -42,18 +40,11 @@ export const CHAT_RESOURCE = "ui://supportbridge/chat";
 export const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 export const APP_MIME = "text/html;profile=mcp-app";
 
-/** Surface forms the host matches literally. A wildcard such as prices* is not evaluated. */
-const INTENT_WORDING = STANDARD_ASSISTANCE_INTENTS
-  .map(intent => `${intent.label} (${intent.words.join(", ")})`)
-  .join("; ");
+const SECURITY_CUES = intentById("security").words.join(", ");
 
-const SECURITY_CUES = intentById("security_compliance").words.join(", ");
-
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. On a live card, point the user to the representative for a quote. On an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. When the user agrees to connect, call confirm_assistance with the offer id from that result. request_assistance, confirm_assistance, and file_escalation run only after the user explicitly chooses. offer_assistance remains available for those topics when get_vendor_answer is unavailable, and it shows a consent card without contacting anyone until the user agrees. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user. offer_assistance also covers: ${INTENT_WORDING}.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. On a live card, point the user to the representative for a quote. On an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. When the user agrees to connect, call confirm_assistance with the offer id from that result. request_assistance, confirm_assistance, and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
-export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by offer_assistance.";
-
-export const OFFER_ASSISTANCE_DESCRIPTION = `This connector has no price list. A question about its price or pricing is answered here. Shows an optional live-assistance consent card so the user can choose to chat with a representative. Use this for covered topics when get_vendor_answer is unavailable. Use when the user asks about ${INTENT_WORDING}. Displaying the card does not contact anyone. Pass intent (${ASSISTANCE_INTENT_IDS.join(", ")}) and an optional short issueSummary.`;
+export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
 export function vendorAnswerDescription(vendorName) {
   const vendor = String(vendorName ?? "").trim() || "this vendor";
@@ -101,13 +92,22 @@ export function invitationText(offer) {
 
 const INTENT_TOPIC = {
   pricing: "pricing",
-  purchase: "purchasing",
-  demo_or_pilot: "a demo or pilot",
+  upgrade: "an upgrade",
+  purchase: "an upgrade",
+  demo: "a demo",
+  demo_or_pilot: "a demo",
+  trial: "a trial",
   enterprise: "enterprise terms",
   implementation: "implementation",
+  security: "security and compliance",
   security_compliance: "security and compliance",
+  billing: "billing",
   billing_payment: "billing",
-  cancellation_downgrade: "cancellation"
+  cancellation: "cancellation",
+  cancellation_downgrade: "cancellation",
+  renewal: "renewal",
+  competitive: "a comparison",
+  buying_process: "the buying process"
 };
 
 function topicPhrase(intent, label) {
@@ -135,13 +135,22 @@ export function liveOfferCopy(offer) {
 
 const DRAFT_ASK = {
   pricing: "Can you share current plans and rates?",
-  purchase: "Can you help them with a purchase?",
-  demo_or_pilot: "Can you arrange a demo or pilot?",
+  upgrade: "Can you help them with an upgrade?",
+  purchase: "Can you help them with an upgrade?",
+  demo: "Can you arrange a demo?",
+  demo_or_pilot: "Can you arrange a demo?",
+  trial: "Can you arrange a trial or pilot?",
   enterprise: "Can you share enterprise terms?",
   implementation: "Can you help with implementation?",
+  security: "Can you share your security and compliance details?",
   security_compliance: "Can you share your security and compliance details?",
+  billing: "Can you look into a billing question?",
   billing_payment: "Can you look into a billing question?",
-  cancellation_downgrade: "Can you help with a cancellation?"
+  cancellation: "Can you help with a cancellation?",
+  cancellation_downgrade: "Can you help with a cancellation?",
+  renewal: "Can you help with a renewal?",
+  competitive: "Can you share a comparison?",
+  buying_process: "Can you talk through budget and timing?"
 };
 
 export function assistanceDraft(note) {
@@ -495,19 +504,29 @@ SupportBridge.install = function install(server, options) {
   const appOnlyChatMeta = appOnlyMeta();
 
   const answerTool = async (args, extra) => {
-    const result = await serviceFetch(baseUrl, options.apiKey, "/v1/answers", {
-      method: "POST",
-      body: {
-        ...await identityOf(identify, extra),
-        topic: args?.topic,
-        question: args?.question,
-        ...(args?.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {})
-      }
-    });
+    const topic = String(args?.topic ?? args?.intent ?? "").trim();
+    const question = String(args?.question ?? args?.issueSummary ?? args?.issue_summary ?? "").trim();
+    if (!topic || !question) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: "Call get_vendor_answer with the topic and the user's question. Do not guess a price or plan, and do not contact anyone." }],
+        structuredContent: { status: "question_required" }
+      };
+    }
+    const body = {
+      ...await identityOf(identify, extra),
+      topic,
+      question,
+      ...(args?.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {})
+    };
+    let result = await serviceFetch(baseUrl, options.apiKey, "/v1/answers", { method: "POST", body });
+    if (answerNeedsRetry(result)) {
+      result = await serviceFetch(baseUrl, options.apiKey, "/v1/answers", { method: "POST", body });
+    }
     if (!result?.answer) {
       return {
         isError: true,
-        content: [{ type: "text", text: "The vendor answer could not be loaded. No one has been contacted." }],
+        content: [{ type: "text", text: "The vendor answer could not be loaded. Tell the user the company's answer is unavailable right now. Do not guess a price or plan, and do not contact anyone." }],
         structuredContent: { status: result?.error ?? "answer_unavailable" }
       };
     }
@@ -519,7 +538,9 @@ SupportBridge.install = function install(server, options) {
     description: vendorAnswerDescription(vendorLabel),
     inputSchema: z.object({
       topic: z.string().min(1).max(80).describe(`The closest topic to what the user asked. Preferred ids: ${ASSISTANCE_INTENT_IDS.join(", ")}.`),
-      question: z.string().min(1).max(2_000).describe("The user's question, in a sentence or two.")
+      question: z.string().min(1).max(2_000).describe("The user's question, in a sentence or two."),
+      intent: looseField("Alias of topic."),
+      issueSummary: looseField("Alias of question.")
     }).passthrough(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     _meta: intentOfferMeta
@@ -566,13 +587,6 @@ SupportBridge.install = function install(server, options) {
       structuredContent: result
     };
   });
-
-  server.registerTool("offer_assistance", {
-    title: "Pricing and commercial questions",
-    description: OFFER_ASSISTANCE_DESCRIPTION,
-    inputSchema: OFFER_ASSISTANCE_INPUT,
-    _meta: intentOfferMeta
-  }, async (args, extra) => createIntentOffer(baseUrl, options.apiKey, await identityOf(identify, extra), normalizeAssistanceArgs(args)));
 
   server.registerTool("confirm_assistance", {
     title: "Confirm assistance",
@@ -714,7 +728,7 @@ SupportBridge.install = function install(server, options) {
         }
         if (result?.isError) return result;
         const identity = await identityOf(identify, extra);
-        // Business-intent cards come only from offer_assistance. Do not scan
+        // Business-intent cards come only from get_vendor_answer. Do not scan
         // tool arguments here or attach an intent card onto a business result.
         const delivered = await deliverOffer(baseUrl, options.apiKey, identity);
         if (!delivered?.offer) return result;
@@ -796,14 +810,16 @@ function resourceMeta(resourceUri) {
 const PLACEHOLDER_IDS = new Set(["anonymous", "customer-from-your-auth", "session-from-your-auth"]);
 const PLACEHOLDER_NAMES = new Set(["customer name"]);
 
-/** A verified email is the customer id. Otherwise the auth subject is used. A missing name stays unset. */
+/** Read the signed-in person from an MCP tool context. A missing name stays unset. */
 export function identifyFromContext(context) {
   const extra = context && typeof context === "object" ? context : {};
   const authExtra = extra.authInfo?.extra && typeof extra.authInfo.extra === "object" ? extra.authInfo.extra : {};
   const meta = extra._meta && typeof extra._meta === "object" ? extra._meta : {};
   const metaUser = meta["openai/user"] && typeof meta["openai/user"] === "object" ? meta["openai/user"] : {};
+  const subject = firstText([authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]);
   return {
-    userId: firstText([verifiedEmail(authExtra), authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]),
+    userId: firstText([verifiedEmail(authExtra), subject]),
+    authUserId: subject,
     sessionId: firstText([extra.sessionId, meta.sessionId]),
     displayName: firstText([authExtra.name, authExtra.preferred_username, metaUser.name])
   };
@@ -835,9 +851,11 @@ async function identityOf(identify, context) {
   const provided = await identify(context ?? {}) ?? {};
   const fromContext = identify === identifyFromContext ? {} : identifyFromContext(context);
   const displayName = usableIdentity(provided.displayName, PLACEHOLDER_NAMES) || fromContext.displayName;
+  const authUserId = usableIdentity(provided.authUserId, PLACEHOLDER_IDS) || usableIdentity(fromContext.authUserId, PLACEHOLDER_IDS);
   return {
     customerUserId: usableIdentity(provided.userId ?? provided.customerUserId, PLACEHOLDER_IDS) || fromContext.userId || "anonymous",
     customerSessionId: usableIdentity(provided.sessionId ?? provided.customerSessionId, PLACEHOLDER_IDS) || fromContext.sessionId || "anonymous",
+    ...(authUserId ? { authUserId } : {}),
     ...(displayName ? { displayName } : {})
   };
 }
@@ -850,98 +868,10 @@ async function deliverOffer(baseUrl, apiKey, identity) {
   return serviceFetch(baseUrl, apiKey, "/v1/offers/deliver", { method: "POST", body: identity });
 }
 
-async function createIntentOffer(baseUrl, apiKey, identity, args) {
-  const intent = String(args?.intent ?? "");
-  const issueSummary = String(args?.issueSummary ?? "").trim();
-  const result = await serviceFetch(baseUrl, apiKey, "/v1/offers/intent", {
-    method: "POST",
-    body: { ...identity, intent, issueSummary }
-  });
-  if (result?.conversation?.id) {
-    return {
-      content: [{
-        type: "text",
-        text: `You already have a live chat with ${result.conversation.representativeName || "support"}. Opening that conversation.`
-      }],
-      structuredContent: {
-        status: "accepted",
-        offered: false,
-        chatStarted: true,
-        conversationId: result.conversation.id,
-        representativeName: result.conversation.representativeName
-      },
-      _meta: uiMeta(CHAT_RESOURCE)
-    };
-  }
-  if (result?.escalation) {
-    const note = result.escalation;
-    const copy = asyncEscalationCopy(note);
-    return {
-      content: [{ type: "text", text: copy.suggestedMessage }],
-      structuredContent: {
-        status: "awaiting_consent",
-        offered: true,
-        chatStarted: false,
-        mode: "async_note",
-        offerId: note.id,
-        offer_id: note.id,
-        escalationOfferId: note.id,
-        intent: note.intent,
-        intentLabel: note.intentLabel,
-        issueSummary: note.issueSummary,
-        vendorName: note.vendorName,
-        expiresAt: note.expiresAt,
-        ...copy,
-        escalation: note
-      },
-      _meta: uiMeta(INTENT_OFFER_RESOURCE)
-    };
-  }
-  if (!result?.offer) {
-    const reason = result?.reason ?? result?.error ?? "assistance_unavailable";
-    return {
-      content: [{
-        type: "text",
-        text: "Live assistance is not being offered for this request right now. Continue helping the user normally; no one has been contacted."
-      }],
-      structuredContent: {
-        status: reason,
-        chatStarted: false,
-        offered: false
-      }
-    };
-  }
-  const offer = result.offer;
-  const label = offer.intentLabel || intentById(offer.intent)?.label || offer.intent;
-  const copy = liveOfferCopy(offer);
-  return {
-    content: [{ type: "text", text: copy.suggestedMessage }],
-    structuredContent: {
-      status: "offered",
-      offered: true,
-      chatStarted: false,
-      offerId: offer.id,
-      offer_id: offer.id,
-      intent: offer.intent,
-      intentLabel: label,
-      issueSummary: offer.issueSummary,
-      representativeName: offer.representativeName,
-      representativeRole: offer.representativeRole,
-      vendorName: offer.vendorName,
-      expiresAt: offer.expiresAt,
-      ...copy
-    },
-    _meta: {
-      ...uiMeta(INTENT_OFFER_RESOURCE),
-      "supportbridge/offer": {
-        offerId: offer.id,
-        offer_id: offer.id,
-        vendorName: offer.vendorName,
-        representativeName: offer.representativeName,
-        representativeRole: offer.representativeRole
-      }
-    }
-  };
+function answerNeedsRetry(result) {
+  if (result?.answer) return false;
+  if (result == null) return true;
+  return Number(result.status) >= 500;
 }
 
 async function acceptOffer(baseUrl, apiKey, identity, offerId) {
@@ -993,7 +923,7 @@ function needsOfferAssistanceResult(message) {
 async function confirmAssistance(baseUrl, apiKey, identity, offerId) {
   if (!offerId) {
     return needsOfferAssistanceResult(
-      "No offer id was provided. Call offer_assistance with a matching intent and issueSummary first to show the consent card. Do not start a chat without an offer."
+      "No offer id was provided. Call get_vendor_answer with the topic and the user's question first. Do not start a chat without an offer."
     );
   }
   return acceptOffer(baseUrl, apiKey, identity, offerId);
@@ -1007,7 +937,7 @@ async function requestAssistance(baseUrl, apiKey, identity, offerId) {
     return acceptOffer(baseUrl, apiKey, identity, open.id);
   }
   return needsOfferAssistanceResult(
-    "No pending assistance offer was found for this session. For a business-intent support request, call offer_assistance with a matching intent and issueSummary first. Then confirm with that offer id."
+    "No pending assistance offer was found for this session. Call get_vendor_answer with the topic and the user's question first. Then confirm with that offer id."
   );
 }
 

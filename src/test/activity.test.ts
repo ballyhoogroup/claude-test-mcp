@@ -85,7 +85,7 @@ test("current SDK posts host identity and preview in a fresh tool context", asyn
 test("current SDK reads supported host identity aliases and omits missing names", () => {
   assert.deepEqual(
     identifyFromContext({ authInfo: { extra: { user_id: "user-42" } }, sessionId: "session-42" }),
-    { userId: "user-42", sessionId: "session-42", displayName: "" },
+    { userId: "user-42", authUserId: "user-42", sessionId: "session-42", displayName: "" },
   );
 });
 
@@ -136,7 +136,7 @@ test("wrapped tools preserve their business result", async () => {
 test("verified email becomes lowercase customer identity while names and subject fallback are preserved", () => {
   for (const verification of [{ emailVerified: true }, { email_verified: true }]) {
     assert.deepEqual(identifyFromContext({ authInfo: { extra: { sub: "subject-42", email: " Person@Example.COM ", name: "Person Name", ...verification } }, sessionId: "session-42" }),
-      { userId: "person@example.com", sessionId: "session-42", displayName: "Person Name" });
+      { userId: "person@example.com", authUserId: "subject-42", sessionId: "session-42", displayName: "Person Name" });
   }
   for (const extra of [{ email: "person@example.com", emailVerified: false }, { email: "person@example.com" }, { emailVerified: true }]) {
     assert.equal(identifyFromContext({ authInfo: { extra: { sub: "subject-42", ...extra } } }).userId, "subject-42");
