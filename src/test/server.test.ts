@@ -244,6 +244,7 @@ test("vendor answer labels live contact by first name and reopens an existing co
     assert.equal((reopened.structuredContent as Record<string, unknown>)?.offered, false);
     assert.equal((reopened.structuredContent as Record<string, unknown>)?.conversationId, "existing-chat");
     assert.match(JSON.stringify(reopened.content), /already have a live chat/);
+    assert.equal(reopened._meta?.["openai/outputTemplate"], "ui://supportbridge/chat");
   } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
 });
 

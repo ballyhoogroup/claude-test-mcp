@@ -297,7 +297,7 @@ function vendorAnswerResult(payload) {
         offerId: conversation.offerId || "",
         offer_id: conversation.offerId || ""
       },
-      _meta: uiMeta(INTENT_OFFER_RESOURCE)
+      _meta: uiMeta(CHAT_RESOURCE)
     };
   }
   if (payload.escalation && !payload.offer) {
@@ -1629,10 +1629,10 @@ ${chatPanelStyles()}
       <p id="va-agent-foot">A person is not in this chat.</p>
     </form>
   </article>
-  <section id="offer-root" class="card" aria-labelledby="offer-title">
-    <p class="eyebrow" id="eyebrow">Support available</p>
-    <h1 id="offer-title">Support is available to review this result. Would you like to connect?</h1>
-    <p class="note" id="note">Nothing is sent until you choose Chat with support.</p>
+  <section id="offer-root" class="card" hidden aria-labelledby="offer-title">
+    <p class="eyebrow" id="eyebrow"></p>
+    <h1 id="offer-title"></h1>
+    <p class="note" id="note"></p>
     <blockquote id="draft" hidden></blockquote>
     <div class="actions" id="actions">
       <button id="accept" type="button">Chat with support</button>
@@ -1723,22 +1723,25 @@ function mountChat(payload){
   startChatSession(payload||{});
   requestFrame(520);
 }
+function alreadyChatting(payload){
+  return Boolean(conversationIdOf(payload)&&(chatStartedOf(payload)||Array.isArray(payload.messages)||(payload.conversation&&payload.conversation.id)));
+}
 function apply(data){
   const payload=flattenAssistance(data||{});
-  if(payload.direct_answer){
-    renderVendor(payload);
-    if(conversationIdOf(payload)&&(chatStartedOf(payload)||(payload.conversation&&payload.conversation.id))){
-      mountChat(mountPayload(payload));
-    }
-    return;
-  }
-  if(vaCard) vaCard.hidden=true;
-  if(offerRootEl) offerRootEl.hidden=false;
-  if(conversationIdOf(payload)&&(chatStartedOf(payload)||Array.isArray(payload.messages)||(payload.conversation&&payload.conversation.id))){
+  if(alreadyChatting(payload)){
+    if(vaCard) vaCard.hidden=true;
+    if(offerRootEl) offerRootEl.hidden=true;
     mountChat(mountPayload(payload));
     return;
   }
+  if(payload.direct_answer){
+    renderVendor(payload);
+    return;
+  }
+  if(vaCard) vaCard.hidden=true;
+  if(offerRootEl) offerRootEl.hidden=true;
   if(payload.status==="representative_unavailable"||payload.available===false){
+    if(offerRootEl) offerRootEl.hidden=false;
     settled=true;
     offerClosed=true;
     offerId="";
@@ -1755,6 +1758,7 @@ function apply(data){
   if(payload.acceptTool) acceptTool=payload.acceptTool;
   if(payload.declineTool) declineTool=payload.declineTool;
   if(payload.cardTitle){
+    if(offerRootEl) offerRootEl.hidden=false;
     eyebrowEl.textContent=payload.cardEyebrow||eyebrowEl.textContent;
     eyebrowEl.classList.toggle("neutral", payload.cardEyebrowTone==="neutral");
     offerTitleEl.textContent=payload.cardTitle;
@@ -1775,13 +1779,6 @@ function apply(data){
     fitFrame();
     return;
   }
-  const vendor=payload.vendorName||"";
-  if(vendor){
-    eyebrowEl.textContent=(vendor+" support available").toUpperCase();
-    offerTitleEl.textContent=vendor+" support is available to review this result. Would you like to connect?";
-  }
-  const who=payload.representativeName?(payload.representativeName+(payload.representativeRole?", "+payload.representativeRole:"")):(vendor||"the representative");
-  if(payload.representativeName||vendor) noteEl.textContent="Starting a chat contacts "+who+". Nothing is sent until you choose Chat with support.";
   if(!pendingAction) setBusy(false);
   fitFrame();
 }
@@ -2181,7 +2178,7 @@ function payloadFrom(value){
   if(!value||typeof value!=="object")return null;
   const nested=value.structuredContent||value["supportbridge/offer"];
   const payload=flattenAssistance(nested&&typeof nested==="object"?nested:value);
-  if(payload.offerId||payload.offer_id||payload.escalationOfferId||payload.cardTitle||payload.vendorName||payload.representativeName||payload.chatStarted||payload.conversationId)return payload;
+  if(payload.offerId||payload.offer_id||payload.escalationOfferId||payload.cardTitle||payload.vendorName||payload.representativeName||payload.chatStarted||payload.conversationId||payload.direct_answer||(payload.conversation&&payload.conversation.id))return payload;
   return null;
 }
 function hostOutput(){
