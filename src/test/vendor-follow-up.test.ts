@@ -14,9 +14,9 @@ test("SDK card uses one surface for live, note, and assistant offers", async () 
   }
   const clickStart = source.indexOf("vaAccept.onclick=async()=>{");
   const click = source.slice(clickStart, source.indexOf("\n};", clickStart) + 3);
-  const node = () => ({ hidden: true, textContent: "", value: "", firstChild: { textContent: "" }, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, focus() {} });
+  const node = () => ({ hidden: true, scrollHeight: 120, clientHeight: 80, textContent: "", value: "", firstChild: { textContent: "" }, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, focus() {} });
   const sandbox: any = { document: {}, offerId: "", acceptTool: "", declineTool: "", pendingAction: false, settled: false, offerClosed: false,
-    renderFacts() {}, setPill() {}, fitFrame() {}, setBusy(busy: boolean) { sandbox.pendingAction = busy; } };
+    requestAnimationFrame(callback: () => void) { callback(); }, renderFacts() {}, setPill() {}, fitFrame() {}, setBusy(busy: boolean) { sandbox.pendingAction = busy; } };
   for (const name of source.matchAll(/(?:const|let) (\w+)=document.getElementById/g)) sandbox[name[1]] = node();
   const context = createContext(sandbox);
   runInContext(extract("renderVendor") + "\n" + extract("openAgentChat") + "\n" + click, context);
