@@ -39,7 +39,7 @@ app.get("/", (_req, res) => {
     authEnabled,
     companyAccessDefaultLimit: 10,
     supportToolNames: "vendor-answers-existing-chat",
-    supportBridgeSdkVersion: "8372a513f5fc9a022e8e6b1cec8f662e50e17aa3",
+    supportBridgeSdkVersion: "ba6cdadf582d69d0ab0f6fcc1fc96bb6a1e87148",
   });
 });
 

@@ -37,7 +37,6 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       ["get_vendor_answer", "Vendor answer"],
       ["talk_to_vendor_agent", "Talk to the vendor assistant"],
       ["confirm_assistance", "Confirm assistance"],
-      ["request_assistance", "Request assistance"],
       ["file_escalation", "File escalation"],
       ["decline_escalation", "Decline escalation"],
       ["decline_assistance", "Decline assistance"],
@@ -57,6 +56,7 @@ test("exposes the business tools and SDK-managed assistance tools", async () => 
       assert.equal(tools.tools.find(tool => tool.name === name)?._meta, undefined, name);
       assert.match(tools.tools.find(tool => tool.name === name)?.description ?? "", /Pitch Fork/);
     }
+    assert.equal(new Set(tools.tools.map(tool => tool.name)).size, tools.tools.length);
     assert.ok(tools.tools.every(tool => !tool.description?.startsWith("Deprecated")));
     assert.match(tools.tools.find(tool => tool.name === "get_vendor_answer")?.description ?? "", /Pitch Fork/);
     const resources = await client.listResources();
@@ -205,23 +205,24 @@ test("vendor answers use the signed-in identity and answers endpoint without sta
     const result = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "What plans are available?" } });
     assert.notEqual(result.isError, true);
     assert.match(JSON.stringify(result.content), /tailored quote/);
-    assert.equal(calls.length, 1);
-    assert.ok(calls[0].url.endsWith("/v1/answers"));
-    assert.equal(calls[0].body.customerUserId, "answer-test-user");
-    assert.equal(calls[0].body.topic, "pricing");
+    const answers = calls.filter(call => call.url.endsWith("/v1/answers"));
+    assert.equal(answers.length, 1);
+    assert.ok(calls.every(call => /\/v1\/(answers|activity|install)$/.test(call.url)));
+    assert.equal(answers[0].body.customerUserId, "answer-test-user");
+    assert.equal(answers[0].body.topic, "pricing");
   } finally {
     globalThis.fetch = async () => Response.json({});
     await client.close(); await server.close();
   }
 });
 
-test("legacy support names are absent and cannot be called", async () => {
+test("removed support names are absent and cannot be called", async () => {
   const { client, server } = await connectedClient();
   try {
     const { tools } = await client.listTools();
     const names = tools.map(tool => tool.name);
     assert.equal(new Set(names).size, names.length);
-    for (const name of ["offer_assistance", "ask_company", "show_assistance_offer", "accept_invitation", "request_person", "leave_note", "decline_invitation", "read_conversation", "send_to_person", "end_conversation", "get_invitation"]) {
+    for (const name of ["offer_assistance", "ask_company", "accept_invitation", "request_person", "leave_note", "decline_invitation", "request_assistance", "show_assistance_offer", "read_conversation", "send_to_person", "end_conversation", "get_invitation"]) {
       assert.ok(!names.includes(name), name);
       const result = await client.callTool({ name, arguments: {} });
       assert.equal(result.isError, true, name);
@@ -256,8 +257,48 @@ test("vendor answer failure returns an unavailable message without contacting an
     const result = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "What does it cost?" } });
     assert.equal(result.isError, true);
     assert.match(JSON.stringify(result.content), /answer could not be loaded/i);
-    assert.equal(calls.length, 2);
-    assert.ok(calls.every(url => url.endsWith("/v1/answers")));
+    assert.equal(calls.filter(url => url.endsWith("/v1/answers")).length, 2);
+    assert.ok(calls.every(url => /\/v1\/(answers|activity|install)$/.test(url)));
     assert.match(client.getInstructions() ?? "", /Do not guess a price or plan, and do not contact anyone/);
+  } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
+});
+
+test("company results survive an unreachable or slow SupportBridge service", async () => {
+  for (const mode of ["unreachable", "slow"]) {
+    globalThis.fetch = async (_input, init) => {
+      if (mode === "unreachable") throw new Error("Network unavailable");
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) { reject(signal.reason); return; }
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    };
+    const { client, server } = await connectedClient();
+    try {
+      const result = await client.callTool({ name: "get_company", arguments: { id: "co-001" } });
+      assert.notEqual(result.isError, true, mode);
+      const parts = result.content as Array<{ type: string; text: string }>;
+      assert.equal(JSON.parse(parts[0].text).name, "CashGrid", mode);
+      assert.equal(JSON.parse(parts[0].text).id, "co-001", mode);
+      assert.match(JSON.stringify(parts), /service is unreachable/i, mode);
+      assert.doesNotMatch(JSON.stringify(parts), /offer.*(?:failed|inactive)|(?:failed|inactive).*offer/i, mode);
+    } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
+  }
+});
+
+test("confirm_assistance accepts an existing manual offer without an offer id", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = async input => {
+    const url = String(input); calls.push(url);
+    if (url.endsWith("/v1/offers/deliver")) return Response.json({ offer: { id: "manual-offer", source: "manual", status: "pending" } });
+    if (url.endsWith("/v1/offers/manual-offer/accept")) return Response.json({ conversation: { id: "manual-chat", representativeName: "Sarah Teller" }, offer: { id: "manual-offer", vendorName: "Pitch Fork" } });
+    return Response.json({});
+  };
+  const { client, server } = await connectedClient();
+  try {
+    const result = await client.callTool({ name: "confirm_assistance", arguments: {} });
+    assert.equal((result.structuredContent as Record<string, unknown>)?.chatStarted, true);
+    assert.ok(calls.some(url => url.endsWith("/v1/offers/deliver")));
+    assert.ok(calls.some(url => url.endsWith("/v1/offers/manual-offer/accept")));
   } finally { globalThis.fetch = async () => Response.json({}); await client.close(); await server.close(); }
 });

@@ -49,18 +49,47 @@ function isSafeTokenValue(value) {
   return SHORT_TOKEN.test(text);
 }
 
-/** Safe argument tokens only: enums/booleans/small ints/short tokens. Drops free text. */
+function tokenLeaf(key) {
+  const text = String(key ?? "");
+  const dot = text.lastIndexOf(".");
+  return dot >= 0 ? text.slice(dot + 1) : text;
+}
+
+function addToken(tokens, key, value, depth) {
+  if (Object.keys(tokens).length >= 12) return;
+  const leaf = tokenLeaf(key);
+  if (!leaf || SECRET_KEY.test(leaf) || FREE_TEXT_KEY.test(leaf)) return;
+  if (value == null || value === "" || value === "[redacted]" || value === "[truncated]") return;
+  if (Array.isArray(value)) {
+    const parts = [];
+    for (const item of value) {
+      if (!isSafeTokenValue(item)) continue;
+      parts.push(typeof item === "string" ? item.trim() : item);
+      if (parts.length >= 6) break;
+    }
+    if (parts.length) tokens[key] = parts.join(",");
+    return;
+  }
+  if (value && typeof value === "object") {
+    if (depth >= 1) return;
+    for (const [childKey, child] of Object.entries(value)) {
+      addToken(tokens, `${key}.${childKey}`.slice(0, 48), child, depth + 1);
+      if (Object.keys(tokens).length >= 12) return;
+    }
+    return;
+  }
+  if (!isSafeTokenValue(value)) return;
+  tokens[key] = typeof value === "string" ? value.trim() : value;
+}
+
+/** Safe argument tokens only: enums/booleans/small ints/short tokens. Drops free text. One nested object is flattened. */
 export function safeArgumentTokens(args) {
   if (args == null || typeof args !== "object" || Array.isArray(args)) return {};
   const redacted = redact(args);
   if (!redacted || typeof redacted !== "object" || Array.isArray(redacted)) return {};
   const tokens = {};
   for (const [key, value] of Object.entries(redacted)) {
-    if (SECRET_KEY.test(key) || FREE_TEXT_KEY.test(key)) continue;
-    if (value == null || value === "" || value === "[redacted]" || value === "[truncated]") continue;
-    if (typeof value === "object") continue;
-    if (!isSafeTokenValue(value)) continue;
-    tokens[key] = typeof value === "string" ? value.trim() : value;
+    addToken(tokens, key, value, 0);
     if (Object.keys(tokens).length >= 12) break;
   }
   return tokens;
@@ -69,6 +98,25 @@ export function safeArgumentTokens(args) {
 const PREVIEW_SKIP = /^(name|fullname|address|notes?|comment|description)$/i;
 const ARGUMENT_TEXT_KEY = /^(query|q|prompt|text|message|content|input|search)$/i;
 
+function collectPreview(parts, key, value, depth) {
+  const leaf = tokenLeaf(key);
+  if (!leaf || SECRET_KEY.test(leaf) || PREVIEW_SKIP.test(leaf)) return;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (depth >= 1) return;
+    for (const [childKey, child] of Object.entries(value)) {
+      collectPreview(parts, childKey, child, depth + 1);
+      if (parts.join(" · ").length >= 140) return;
+    }
+    return;
+  }
+  if (typeof value !== "string") return;
+  const text = value.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!text || text === "[redacted]" || text === "[truncated]") return;
+  const searchable = ARGUMENT_TEXT_KEY.test(leaf);
+  if (!searchable && (isSafeTokenValue(text) || !/\s/.test(text))) return;
+  parts.push(text);
+}
+
 /** Short redacted query gist. Safe to store on an activity event; not a raw argument dump. */
 export function argumentPreview(args) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return "";
@@ -76,16 +124,38 @@ export function argumentPreview(args) {
   if (!redacted || typeof redacted !== "object" || Array.isArray(redacted)) return "";
   const parts = [];
   for (const [key, value] of Object.entries(redacted)) {
-    if (SECRET_KEY.test(key) || PREVIEW_SKIP.test(key)) continue;
-    if (typeof value !== "string") continue;
-    const text = value.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
-    if (!text || text === "[redacted]" || text === "[truncated]") continue;
-    const searchable = ARGUMENT_TEXT_KEY.test(key);
-    if (!searchable && (isSafeTokenValue(text) || !/\s/.test(text))) continue;
-    parts.push(text);
+    collectPreview(parts, key, value, 0);
     if (parts.join(" · ").length >= 140) break;
   }
   return parts.join(" · ").slice(0, 160);
+}
+
+const PARAMETER_SKIP = new Set(["intent", "topic"]);
+
+/** Safe parameter line for the Activity log. Intent labels stay off this line. */
+export function parameterDetail(row) {
+  const tokens = row?.tokens && typeof row.tokens === "object" && !Array.isArray(row.tokens) ? row.tokens : {};
+  const gist = String(row?.gistMixed ? "" : row?.gist ?? "").trim().toLowerCase();
+  const parts = [];
+  for (const key of Object.keys(tokens).sort()) {
+    if (PARAMETER_SKIP.has(tokenLeaf(key).toLowerCase())) continue;
+    const value = tokens[key];
+    if (value == null || value === "") continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    if (gist && gist.includes(text.toLowerCase())) continue;
+    parts.push(`${key}: ${text}`);
+    if (parts.join(", ").length >= 140) break;
+  }
+  return parts.join(", ").slice(0, 160);
+}
+
+/** Gist plus the parameter line. This is what the Activity log shows beside the tool. */
+export function activityArgs(row) {
+  const gist = row?.gistMixed ? "" : String(row?.gist ?? "").trim();
+  const detail = parameterDetail(row);
+  if (gist && detail) return `${gist} · ${detail}`.slice(0, 160);
+  return (gist || detail).slice(0, 160);
 }
 
 /** @deprecated Prefer safeArgumentTokens. Kept for callers that want a string. */

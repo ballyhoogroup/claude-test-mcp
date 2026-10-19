@@ -31,28 +31,22 @@ const OFFER_CONNECT_INPUT = z.object({
   offerId: looseField("Offer id (camelCase). Same as offer_id.")
 }).passthrough();
 
-/** Loose ask_company schema: synonyms, a missing summary, and extras (name/email) are accepted. */
-const OFFER_ASSISTANCE_INPUT = z.object({
-  intent: looseField(`Business intent id or free text. Preferred ids: ${ASSISTANCE_INTENT_IDS.join(", ")}. Synonyms like Pricing or support are accepted.`),
-  issueSummary: looseField("Short summary of the user request for the consent card. Optional; a default is used when omitted.")
-}).passthrough();
-
+export const SDK_VERSION = "0.1.1";
 export const CHAT_RESOURCE = "ui://supportbridge/chat";
 export const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 export const APP_MIME = "text/html;profile=mcp-app";
 
 const SECURITY_CUES = intentById("security").words.join(", ");
 
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. On a live card, point the user to the representative for a quote. On an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. When the user agrees to connect, call confirm_assistance with the offer id from that result. request_assistance, confirm_assistance, and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. On a live card, point the user to the representative for a quote. On an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. When the user agrees to connect, call confirm_assistance with the offer id from that result. If a representative already offered help and there is no offer id, call confirm_assistance with no offer id. confirm_assistance and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
 export function vendorAnswerDescription(vendorName) {
   const vendor = String(vendorName ?? "").trim() || "this vendor";
-  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. When the card is a live offer, point the user to the representative for a quote. When the card is an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after request_assistance or file_escalation succeeds.`;
+  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. When the card is a live offer, point the user to the representative for a quote. When the card is an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds.`;
 }
-export const CONFIRM_ASSISTANCE_DESCRIPTION = "Starts the live chat for an assistance card the user accepted. Pass the offerId from that card. Returns the conversation status.";
-export const REQUEST_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts a manual offer in text. Pass the offerId from the assistance object on the earlier tool result. Also opens the chat after the user accepts an assistance card, using the offerId from that card.";
+export const CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts. Pass the offerId from the assistance card or from the assistance object on an earlier tool result. With no offer id, accepts a pending manual offer for this session. Returns the conversation status.";
 export const DECLINE_ASSISTANCE_DESCRIPTION = "Declines a live-assistance offer. Pass the offerId. Does not contact anyone.";
 
 /** Copy a vendor tool without rewriting its description. Result interception stays on the installed wrapper. */
@@ -410,7 +404,6 @@ function vendorAnswerResult(payload) {
     const copy = liveOfferCopy(offer);
     const firstName = String(offer.representativeName || "").trim().split(/\s+/)[0];
     const topic = topicPhrase(offer.intent, offer.intentLabel);
-    copy.acceptTool = "request_assistance";
     copy.acceptLabel = firstName ? `Chat with ${firstName}` : "Chat with support";
     copy.declineLabel = "Not now";
     copy.cardNote = consentNote(offer.issueSummary, copy.acceptLabel);
@@ -513,6 +506,10 @@ SupportBridge.install = function install(server, options) {
   if (!options?.apiKey) throw new Error("api_key_required");
   publishServerInstructions(server);
   const baseUrl = (options.baseUrl ?? "http://127.0.0.1:8787").replace(/\/$/, "");
+  void serviceFetch(baseUrl, options.apiKey, "/v1/install", {
+    method: "POST",
+    body: { source: options.source ?? "mcp", sdkVersion: SDK_VERSION }
+  });
   const vendorLabel = String(options.vendorName ?? "").trim() || "this vendor";
   const identify = options.identify ?? identifyFromContext;
   let mintedSessionId = "";
@@ -587,17 +584,6 @@ SupportBridge.install = function install(server, options) {
     _meta: intentOfferMeta
   }, answerTool);
 
-  server.registerTool("ask_company", {
-    title: "Ask the company",
-    description: "Deprecated alias of get_vendor_answer. Maps intent to topic and issueSummary to question.",
-    inputSchema: OFFER_ASSISTANCE_INPUT,
-    _meta: intentOfferMeta
-  }, async (args, extra) => answerTool({
-    topic: args?.topic ?? args?.intent,
-    question: args?.question ?? args?.issueSummary ?? args?.issue_summary,
-    idempotencyKey: args?.idempotencyKey
-  }, extra));
-
   server.registerTool("talk_to_vendor_agent", {
     title: "Talk to the vendor assistant",
     description: "Sends a message in the vendor assistant chat after the customer chooses Talk to the assistant. Pass the offer id and the message.",
@@ -637,13 +623,6 @@ SupportBridge.install = function install(server, options) {
     _meta: chatMeta
   }, async (args, extra) => confirmAssistance(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, noteArg(args), args?.consentNonce));
 
-  server.registerTool("request_assistance", {
-    title: "Request assistance",
-    description: REQUEST_ASSISTANCE_DESCRIPTION,
-    inputSchema: OFFER_CONNECT_INPUT,
-    _meta: chatMeta
-  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, noteArg(args), args?.consentNonce));
-
   server.registerTool("file_escalation", {
     title: "File escalation",
     description: "Files an async note the customer agreed to send when no representative was available. Pass the escalationOfferId from that offer. Does not start a chat.",
@@ -664,31 +643,6 @@ SupportBridge.install = function install(server, options) {
     inputSchema: OFFER_CONNECT_INPUT
   }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId));
 
-  server.registerTool("accept_invitation", {
-    title: "Accept invitation",
-    description: "Deprecated alias of request_assistance.",
-    inputSchema: OFFER_CONNECT_INPUT,
-    _meta: chatMeta
-  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, noteArg(args), args?.consentNonce));
-
-  server.registerTool("request_person", {
-    title: "Request a person",
-    description: "Deprecated alias of request_assistance.",
-    inputSchema: OFFER_CONNECT_INPUT,
-    _meta: chatMeta
-  }, async (args, extra) => requestAssistance(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, noteArg(args), args?.consentNonce));
-
-  server.registerTool("leave_note", {
-    title: "Leave a note",
-    description: "Deprecated alias of file_escalation.",
-    inputSchema: OFFER_CONNECT_INPUT
-  }, async (args, extra) => fileEscalation(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, args?.note, args?.consentNonce));
-
-  server.registerTool("decline_invitation", {
-    title: "Decline invitation",
-    description: "Deprecated alias of decline_assistance.",
-    inputSchema: OFFER_CONNECT_INPUT
-  }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId));
   server.registerTool("support_get_messages", {
     title: "Get assistance messages",
     description: "Reads assistance chat messages after a cursor. Used by the open chat.",
@@ -756,6 +710,7 @@ SupportBridge.install = function install(server, options) {
         const reply = outcome === "success" ? resultText(result) : "";
         const activity = reportActivity(baseUrl, options.apiKey, {
           source: options.source ?? "mcp",
+          sdkVersion: SDK_VERSION,
           ...identity,
           toolName,
           outcome,
@@ -814,8 +769,13 @@ export function attachInvitation(result, offer) {
 }
 
 function uiMeta(resourceUri) {
+  const offerFrame = resourceUri === INTENT_OFFER_RESOURCE ? { width: 480, height: 640 } : null;
   return {
-    ui: { resourceUri, visibility: ["model", "app"] },
+    ui: {
+      resourceUri,
+      visibility: ["model", "app"],
+      ...(offerFrame ? { preferredFrameSize: offerFrame } : {})
+    },
     "ui/resourceUri": resourceUri,
     "openai/outputTemplate": resourceUri,
     "openai/widgetAccessible": true
@@ -847,7 +807,7 @@ function registerResource(server, name, uri, html) {
 }
 
 function resourceMeta(resourceUri) {
-  const frame = { width: 480, height: 320 };
+  const frame = { width: 480, height: resourceUri === INTENT_OFFER_RESOURCE ? 640 : 320 };
   return {
     ui: { preferredFrameSize: frame, prefersBorder: true },
     "ui/resourceUri": resourceUri,
@@ -986,15 +946,6 @@ function needsOfferAssistanceResult(message) {
 }
 
 async function confirmAssistance(baseUrl, apiKey, identity, offerId, note, consentNonce) {
-  if (!offerId) {
-    return needsOfferAssistanceResult(
-      "No offer id was provided. Call get_vendor_answer with the topic and the user's question first. Do not start a chat without an offer."
-    );
-  }
-  return acceptOffer(baseUrl, apiKey, identity, offerId, note, consentNonce);
-}
-
-async function requestAssistance(baseUrl, apiKey, identity, offerId, note, consentNonce) {
   if (offerId) return acceptOffer(baseUrl, apiKey, identity, offerId, note, consentNonce);
   const delivered = await deliverOffer(baseUrl, apiKey, identity);
   if (delivered == null) return serviceUnreachableResult();
@@ -2337,9 +2288,12 @@ vaAgentForm.onsubmit=async(event)=>{
   }
 };
 function fitFrame(){
-  const cap=Math.max(320, Math.round((window.innerHeight||800)*0.7));
-  const height=Math.min(Math.max(document.documentElement.scrollHeight, 280), cap);
-  requestFrame(height);
+  if(document.body.classList.contains("sb-chat-mode")){
+    const cap=Math.max(320, Math.round((window.innerHeight||800)*0.7));
+    requestFrame(Math.min(Math.max(document.documentElement.scrollHeight, 280), cap));
+    return;
+  }
+  requestFrame(Math.ceil(Math.max(document.documentElement.scrollHeight, 280)));
 }
 setBusy(false);
 fitFrame();
