@@ -38,8 +38,6 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     companyAccessDefaultLimit: 10,
-    supportToolNames: "vendor-answers-existing-chat",
-    supportBridgeSdkVersion: "ba6cdadf582d69d0ab0f6fcc1fc96bb6a1e87148",
   });
 });
 
@@ -118,14 +116,12 @@ app.use("/mcp", async (req, res, next) => {
 // is created per request, so there is no session state to manage across
 // Render's ephemeral/scaled instances.
 app.post("/mcp", async (req, res) => {
-  const { server, support } = createServer();
+  const { server } = createServer();
   let closed = false;
   const close = async () => {
     if (closed) return;
     closed = true;
-    const closeSupport =
-      typeof support.close === "function" ? Promise.resolve(support.close()) : Promise.resolve();
-    await Promise.allSettled([transport.close(), server.close(), closeSupport]);
+    await Promise.allSettled([transport.close(), server.close()]);
   };
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

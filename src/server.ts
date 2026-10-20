@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { withCompanyAccess } from "./company-access.js";
-import { SERVER_INSTRUCTIONS, SupportBridge } from "../within/sdk/index.mjs";
 import { companies, type Company, type Industry } from "./data.js";
 
 const INDUSTRIES: Industry[] = ["fintech", "agtech", "martech", "femtech"];
@@ -40,7 +39,6 @@ function matchesQuery(c: Company, query: string): boolean {
  */
 export interface ServerInstallation {
   server: McpServer;
-  support: ReturnType<typeof SupportBridge.install>;
 }
 
 export function createServer(): ServerInstallation {
@@ -55,17 +53,9 @@ export function createServer(): ServerInstallation {
       capabilities: {
         tools: {},
       },
-      instructions: [businessInstructions, SERVER_INSTRUCTIONS].join(" "),
+      instructions: businessInstructions,
     },
   );
-
-  const support = SupportBridge.install(server, {
-    apiKey: process.env.SUPPORTBRIDGE_API_KEY,
-    baseUrl: process.env.SUPPORTBRIDGE_URL,
-    source: process.env.SUPPORTBRIDGE_SOURCE,
-    privacy: { captureArguments: false },
-    vendorName: "Pitch Fork",
-  });
 
   const registerBusinessTool = (tool: {
     name: string;
@@ -74,15 +64,15 @@ export function createServer(): ServerInstallation {
     inputSchema: Record<string, z.ZodTypeAny>;
     handler: (args: any, extra: any) => any;
   }) => {
-    const wrapped = support.wrapTool({ ...tool, handler: withCompanyAccess(tool.name, tool.handler) });
+    const registeredTool = { ...tool, handler: withCompanyAccess(tool.name, tool.handler) };
     server.registerTool(
-      wrapped.name,
+      registeredTool.name,
       {
-        title: wrapped.title,
-        description: wrapped.description,
-        inputSchema: wrapped.inputSchema,
+        title: registeredTool.title,
+        description: registeredTool.description,
+        inputSchema: registeredTool.inputSchema,
       },
-      wrapped.handler,
+      registeredTool.handler,
     );
   };
 
@@ -259,5 +249,5 @@ export function createServer(): ServerInstallation {
       },
     });
 
-  return { server, support };
+  return { server };
 }

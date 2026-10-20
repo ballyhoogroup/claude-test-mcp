@@ -24,9 +24,7 @@ so it works with:
 | `get_company` | Look up one company by its `id` (e.g. `co-001`). |
 | `list_industries` | List the four industries with company counts. |
 
-These business tools are instrumented by the vendored SupportBridge SDK. The
-SDK also registers its assistance and chat tools; Pitch-Fork does not register
-or modify those tools itself.
+Only the five business catalog tools are registered.
 
 ## Project layout
 
@@ -107,9 +105,6 @@ In the Render dashboard, open the service → **Environment**, and add:
 | --- | --- |
 | `AUTHKIT_DOMAIN` | `your-subdomain.authkit.app` (from step 1) |
 | `MCP_RESOURCE_URL` | `https://<your-service-name>.onrender.com/mcp` (the full MCP endpoint, with no trailing slash) |
-| `SUPPORTBRIDGE_API_KEY` | Set privately in the hosting environment; never commit it. |
-| `SUPPORTBRIDGE_URL` | `https://app.getwith.in` (must be reachable by this process) |
-| `SUPPORTBRIDGE_SOURCE` | `pitch-fork-alpha` |
 
 Save — Render redeploys automatically. Once both are set, `/mcp` requires a
 valid bearer token, and `GET /.well-known/oauth-protected-resource` starts
@@ -179,9 +174,6 @@ variables are configured.
   to run on Render's free tier without sticky sessions.
 - Pitch-Fork provides searchable company profiles and structured company information.
 
-Within SDK copied from the local supportbridge-sdk-fork working tree (including local edits).
-The copied files are `within/sdk/index.mjs`, `within/activity.mjs`, `within/intents.mjs`, and `within/company-agent.mjs`. The health response identifies the copied SDK entry point by SHA-256.
-This commit ignores `privacy.captureArguments: false` and still sends argument previews and result text.
 
 ## Test company allowance
 
