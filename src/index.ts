@@ -38,6 +38,10 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     companyAccessDefaultLimit: 10,
+    supportBridgeSdkVersion: "npm:0.1.3",
+    supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)
+      && process.env.SUPPORTBRIDGE_URL === "https://app.getwith.in"
+      && process.env.SUPPORTBRIDGE_SOURCE === "pitch-fork-mcp",
   });
 });
 
