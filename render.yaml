@@ -22,3 +22,7 @@ services:
         value: https://app.getwith.in
       - key: SUPPORTBRIDGE_SOURCE
         value: pitch-fork-mcp
+      - key: POSTHOG_PROJECT_TOKEN
+        sync: false
+      - key: POSTHOG_HOST
+        sync: false

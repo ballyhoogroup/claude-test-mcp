@@ -9,6 +9,7 @@ process.env.COMPANY_ACCESS_STORE_PATH = join(mkdtempSync(join(tmpdir(), "pitch-m
 process.env.SUPPORTBRIDGE_API_KEY = "test-only-key";
 process.env.SUPPORTBRIDGE_URL = "https://supportbridge.example.invalid";
 process.env.SUPPORTBRIDGE_SOURCE = "pitch-fork-mcp";
+delete process.env.POSTHOG_PROJECT_TOKEN;
 globalThis.fetch = async () => Response.json({});
 const { createServer } = await import("../server.js");
 
@@ -119,4 +120,31 @@ test("company budget is shared across MCP tool calls and fresh server instances"
     const data = JSON.parse((search.content as Array<{ text: string }>)[0].text);
     assert.equal(data.results.length, 10);
   } finally { await next.client.close(); await next.server.close(); }
+});
+
+test("PostHog instrumentation records each tool call once and preserves existing tools and results", async () => {
+  const { PostHog } = await import("posthog-node");
+  const posthog = new PostHog("phc_test_only", { disabled: true });
+  const captures: Array<Parameters<typeof posthog.capture>[0]> = [];
+  posthog.capture = event => { captures.push(event); };
+  const { server } = createServer(posthog);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "analytics-test", version: "1.0.0" });
+  try {
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    const { tools } = await client.listTools();
+    assert.equal(tools.length, 15);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, 15);
+    assert.equal(tools.find(tool => tool.name === "list_industries")?.description, "List Pitch Fork industries and company counts.");
+    const result = await client.callTool({ name: "list_industries", arguments: {} });
+    assert.notEqual(result.isError, true);
+    assert.match(JSON.stringify(result.content), /fintech/);
+    const failed = await client.callTool({ name: "get_company", arguments: { id: "co-does-not-exist" } });
+    assert.equal(failed.isError, true);
+    assert.match(JSON.stringify(failed.content), /No company found/);
+    await new Promise(resolve => setImmediate(resolve));
+    const calls = captures.filter(event => event.event === "$mcp_tool_call");
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map(event => event.properties?.$mcp_tool_name), ["list_industries", "get_company"]);
+  } finally { await client.close(); await server.close(); await posthog.shutdown(); }
 });

@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { instrument } from "@posthog/mcp";
+import { posthogClient } from "./analytics.js";
 import { SERVER_INSTRUCTIONS, SupportBridge } from "@getwithin/sdk";
 import { withCompanyAccess } from "./company-access.js";
 import { companies, type Company, type Industry } from "./data.js";
@@ -43,7 +45,7 @@ export interface ServerInstallation {
   support: ReturnType<typeof SupportBridge.install>;
 }
 
-export function createServer(): ServerInstallation {
+export function createServer(posthog = posthogClient): ServerInstallation {
   const businessInstructions =
     "Pitch-Fork provides company discovery and market intelligence from its company catalog.";
   const server = new McpServer(
@@ -58,6 +60,9 @@ export function createServer(): ServerInstallation {
       instructions: `${businessInstructions} ${SERVER_INSTRUCTIONS}`,
     },
   );
+
+  // Exactly once for this fresh server, before installing or accepting tool calls.
+  if (posthog) instrument(server, posthog);
 
   const support = SupportBridge.install(server, {
     apiKey: process.env.SUPPORTBRIDGE_API_KEY,

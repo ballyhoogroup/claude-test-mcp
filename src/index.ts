@@ -2,6 +2,7 @@ import express from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { createServer } from "./server.js";
+import { posthogClient, shutdownAnalytics } from "./analytics.js";
 import {
   authEnabled,
   authorizationServerMetadataUrl,
@@ -38,6 +39,8 @@ app.get("/", (_req, res) => {
     mcpEndpoint: "/mcp",
     authEnabled,
     companyAccessDefaultLimit: 10,
+    posthogMcpVersion: "0.23.0",
+    posthogAnalyticsEnabled: Boolean(posthogClient),
     supportBridgeSdkVersion: "npm:0.1.3",
     supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)
       && process.env.SUPPORTBRIDGE_URL === "https://app.getwith.in"
@@ -131,6 +134,7 @@ app.post("/mcp", async (req, res) => {
   };
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
+    enableJsonResponse: Boolean(posthogClient),
   });
 
   try {
@@ -172,6 +176,17 @@ app.delete("/mcp", (_req, res) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`Pitch-Fork MCP server listening on port ${PORT}`);
 });
+
+let stopping = false;
+function stopServer() {
+  if (stopping) return;
+  stopping = true;
+  httpServer.close(() => {
+    void shutdownAnalytics().catch(() => console.error("PostHog shutdown failed.")).finally(() => process.exit(0));
+  });
+}
+process.once("SIGTERM", stopServer);
+process.once("SIGINT", stopServer);

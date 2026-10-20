@@ -202,3 +202,18 @@ pitch-fork-mcp in Render Environment. Set SUPPORTBRIDGE_API_KEY privately
 to this company's key; never commit it or paste it into chat. The Render
 blueprint declares these settings and keeps the API key as a private value.
 Redeploy the service after saving its environment.
+
+## PostHog MCP analytics
+
+@posthog/mcp is pinned to 0.23.0 and uses one shared posthog-node client. Set
+POSTHOG_PROJECT_TOKEN privately in Render Environment to enable analytics;
+without it, analytics is disabled. Set POSTHOG_HOST to the ingestion host for
+your project (https://us.i.posthog.com or https://eu.i.posthog.com). US is the
+default when no host is supplied. Never commit the token or paste it into chat.
+
+Each fresh MCP server is instrumented once before support and business tools
+are registered and before the transport accepts requests. When enabled, JSON
+transport responses allow PostHog to correlate stateless sessions. The shared
+client flushes queued events on graceful SIGTERM/SIGINT shutdown.
+
+Setup reference: https://posthog.com/docs/mcp-analytics/installation/typescript
