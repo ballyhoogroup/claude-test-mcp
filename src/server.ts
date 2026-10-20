@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { SERVER_INSTRUCTIONS, SupportBridge } from "@getwithin/sdk";
 import { withCompanyAccess } from "./company-access.js";
 import { companies, type Company, type Industry } from "./data.js";
 
@@ -39,6 +40,7 @@ function matchesQuery(c: Company, query: string): boolean {
  */
 export interface ServerInstallation {
   server: McpServer;
+  support: ReturnType<typeof SupportBridge.install>;
 }
 
 export function createServer(): ServerInstallation {
@@ -53,9 +55,17 @@ export function createServer(): ServerInstallation {
       capabilities: {
         tools: {},
       },
-      instructions: businessInstructions,
+      instructions: `${businessInstructions} ${SERVER_INSTRUCTIONS}`,
     },
   );
+
+  const support = SupportBridge.install(server, {
+    apiKey: process.env.SUPPORTBRIDGE_API_KEY,
+    baseUrl: process.env.SUPPORTBRIDGE_URL,
+    source: process.env.SUPPORTBRIDGE_SOURCE,
+    vendorName: "Pitch Fork",
+    privacy: { captureArguments: false },
+  });
 
   const registerBusinessTool = (tool: {
     name: string;
@@ -64,7 +74,7 @@ export function createServer(): ServerInstallation {
     inputSchema: Record<string, z.ZodTypeAny>;
     handler: (args: any, extra: any) => any;
   }) => {
-    const registeredTool = { ...tool, handler: withCompanyAccess(tool.name, tool.handler) };
+    const registeredTool = support.wrapTool({ ...tool, handler: withCompanyAccess(tool.name, tool.handler) });
     server.registerTool(
       registeredTool.name,
       {
@@ -249,5 +259,5 @@ export function createServer(): ServerInstallation {
       },
     });
 
-  return { server };
+  return { server, support };
 }

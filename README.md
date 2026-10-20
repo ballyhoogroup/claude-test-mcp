@@ -24,7 +24,7 @@ so it works with:
 | `get_company` | Look up one company by its `id` (e.g. `co-001`). |
 | `list_industries` | List the four industries with company counts. |
 
-Only the five business catalog tools are registered.
+The five business catalog tools are wrapped by @getwithin/sdk, which also registers the support tools and UI resources.
 
 ## Project layout
 
@@ -193,3 +193,12 @@ a single server process. Render's free ephemeral filesystem resets this history 
 redeploy or instance replacement. For durable limits, use persistent storage and set
 COMPANY_ACCESS_STORE_PATH to its file path. Multiple instances require a shared,
 transactional store before this can enforce a production-wide allowance.
+
+## SupportBridge
+
+The npm package @getwithin/sdk is installed on the existing MCP server. Set
+SUPPORTBRIDGE_URL to https://app.getwith.in and SUPPORTBRIDGE_SOURCE to
+pitch-fork-mcp in Render Environment. Set SUPPORTBRIDGE_API_KEY privately
+to this company's key; never commit it or paste it into chat. The Render
+blueprint declares these settings and keeps the API key as a private value.
+Redeploy the service after saving its environment.

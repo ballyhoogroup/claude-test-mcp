@@ -116,12 +116,14 @@ app.use("/mcp", async (req, res, next) => {
 // is created per request, so there is no session state to manage across
 // Render's ephemeral/scaled instances.
 app.post("/mcp", async (req, res) => {
-  const { server } = createServer();
+  const { server, support } = createServer();
   let closed = false;
   const close = async () => {
     if (closed) return;
     closed = true;
-    await Promise.allSettled([transport.close(), server.close()]);
+    await Promise.allSettled([transport.close(), server.close(),
+      typeof support.close === "function" ? support.close() : Promise.resolve(),
+    ]);
   };
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

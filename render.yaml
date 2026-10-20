@@ -16,3 +16,9 @@ services:
         sync: false
       - key: MCP_RESOURCE_URL
         sync: false
+      - key: SUPPORTBRIDGE_API_KEY
+        sync: false
+      - key: SUPPORTBRIDGE_URL
+        value: https://app.getwith.in
+      - key: SUPPORTBRIDGE_SOURCE
+        value: pitch-fork-mcp

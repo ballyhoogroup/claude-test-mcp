@@ -6,6 +6,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 process.env.COMPANY_ACCESS_STORE_PATH = join(mkdtempSync(join(tmpdir(), "pitch-mcp-test-")), "access.json");
+process.env.SUPPORTBRIDGE_API_KEY = "test-only-key";
+process.env.SUPPORTBRIDGE_URL = "https://supportbridge.example.invalid";
+process.env.SUPPORTBRIDGE_SOURCE = "pitch-fork-mcp";
+globalThis.fetch = async () => Response.json({});
 const { createServer } = await import("../server.js");
 
 async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
@@ -20,32 +24,40 @@ async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
 
 
 
-test("exposes only five business tools with no SDK instructions or UI resources", async () => {
+test("installs only the npm SDK tools beside the five business tools", async () => {
   const { client, server } = await connectedClient();
   try {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map(tool => tool.name).sort(), ["fetch", "get_company", "list_companies", "list_industries", "search"]);
-    assert.equal(client.getServerCapabilities()?.resources, undefined);
-    assert.equal(client.getInstructions(), "Pitch-Fork provides company discovery and market intelligence from its company catalog.");
-    assert.ok(tools.every(tool => tool._meta === undefined));
-    const removed = await client.callTool({ name: "get_vendor_answer", arguments: { topic: "pricing", question: "Cost?" } });
-    assert.equal(removed.isError, true);
-    assert.match(JSON.stringify(removed.content), /not found/i);
+    assert.deepEqual(tools.map(tool => tool.name).sort(), [
+      "confirm_assistance", "decline_assistance", "decline_escalation", "fetch", "file_escalation", "get_company", "get_vendor_answer",
+      "list_companies", "list_industries", "search", "support_end_session", "support_get_messages", "support_get_offer", "support_send_message", "talk_to_vendor_agent",
+    ]);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
+    assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
+    assert.match(client.getInstructions() ?? "", /Call get_vendor_answer/);
+    const { resources } = await client.listResources();
+    assert.deepEqual(resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
+    for (const name of ["search", "fetch", "list_companies", "get_company", "list_industries"]) {
+      assert.equal(tools.find(tool => tool.name === name)?._meta, undefined);
+    }
   } finally { await client.close(); await server.close(); }
 });
 
-test("business calls make no external service requests", async () => {
+test("company results survive a SupportBridge outage and use the configured source", async () => {
   const originalFetch = globalThis.fetch;
-  let requests = 0;
-  globalThis.fetch = async () => { requests++; throw new Error("Unexpected external service call"); };
-  const { client, server } = await connectedClient();
+  const calls: Array<{ url: string; body: any }> = [];
+  globalThis.fetch = async (input, init) => { calls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : {} }); throw new Error("Service unavailable"); };
+  const { client, server } = await connectedClient("real-test-subject");
   try {
     const result = await client.callTool({ name: "search", arguments: { query: "CashGrid" } });
     assert.notEqual(result.isError, true);
     assert.match(JSON.stringify(result.content), /CashGrid/);
-    assert.equal(result.structuredContent, undefined);
     assert.equal(result._meta, undefined);
-    assert.equal(requests, 0);
+    assert.ok(calls.every(call => call.url.startsWith("https://supportbridge.example.invalid/")));
+    const activity = calls.find(call => call.url.endsWith("/v1/activity"));
+    assert.equal(activity?.body.source, "pitch-fork-mcp");
+    assert.equal(activity?.body.customerUserId, "real-test-subject");
+    assert.doesNotMatch(JSON.stringify(result.content), /offer.*(?:failed|inactive)/i);
   } finally { globalThis.fetch = originalFetch; await client.close(); await server.close(); }
 });
 
