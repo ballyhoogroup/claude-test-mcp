@@ -148,3 +148,34 @@ test("PostHog instrumentation records each tool call once and preserves existing
     assert.deepEqual(calls.map(event => event.properties?.$mcp_tool_name), ["list_industries", "get_company"]);
   } finally { await client.close(); await server.close(); await posthog.shutdown(); }
 });
+
+test("choice card previews an available representative without reserving or assigning one", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: any }> = [];
+  let availableRep: any = { id: "not-to-be-sent", name: "Sarah Teller", role: "Account manager" };
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : {} });
+    if (url.endsWith("/v1/answers")) return Response.json({ answer: { text: "Ask Pitch Fork for a quote." }, availableRep, offer: { id: "choice-offer", source: "choice", intent: "pricing", vendorName: "Pitch Fork" } });
+    return Response.json({});
+  };
+  const { client, server } = await connectedClient();
+  try {
+    const args = { topic: "pricing", question: "What does Pitch Fork cost?" };
+    const result = await client.callTool({ name: "get_vendor_answer", arguments: args });
+    const card = result.structuredContent as Record<string, any>;
+    assert.equal(card.kind, "choice"); assert.equal(card.state, "choice");
+    assert.equal(card.representativeName, "Sarah Teller");
+    assert.equal(card.acceptLabel, "Speak with Sarah Teller");
+    assert.equal(card.rep.name, "Sarah Teller");
+    assert.equal(card.acceptTool, "confirm_assistance");
+    assert.equal(card.chatStarted, false);
+    assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/intent-offer");
+    availableRep = null;
+    const offline = await client.callTool({ name: "get_vendor_answer", arguments: args });
+    const offlineCard = offline.structuredContent as Record<string, any>;
+    assert.equal(offlineCard.representativeName, null);
+    assert.equal(offlineCard.acceptLabel, "Speak Live");
+    assert.ok(requests.every(request => /\/v1\/(answers|activity|install)$/.test(request.url)));
+    assert.ok(requests.every(request => !/not-to-be-sent|representativeId|representative_id|repId|reserve/.test(JSON.stringify(request.body))));
+  } finally { globalThis.fetch = originalFetch; await client.close(); await server.close(); }
+});

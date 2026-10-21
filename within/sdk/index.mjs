@@ -98,13 +98,13 @@ function frameSize(resourceUri) {
 
 const SECURITY_CUES = intentById("security").words.join(", ");
 
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. On a live card, point the user to the representative for a quote. On an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. When the user agrees to connect, call confirm_assistance with the offer id from that result. If a representative already offered help and there is no offer id, call confirm_assistance with no offer id. confirm_assistance and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak Live, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. Speak Live calls confirm_assistance with the offer id. Speak to Assistant stays on this card, and talk_to_vendor_agent runs when the customer sends a message. Decline calls decline_assistance. If Speak Live finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. If a representative already offered help and there is no offer id, call confirm_assistance with no offer id. confirm_assistance and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
 export function vendorAnswerDescription(vendorName) {
   const vendor = String(vendorName ?? "").trim() || "this vendor";
-  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. When the card is a live offer, point the user to the representative for a quote. When the card is an escalation, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds.`;
+  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. Relay Speak Live, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. If Speak Live finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds.`;
 }
 export const CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts. Pass the offerId from the assistance card or from the assistance object on an earlier tool result. With no offer id, accepts a pending manual offer for this session. Returns the conversation status.";
 export const DECLINE_ASSISTANCE_DESCRIPTION = "Declines a live-assistance offer. Pass the offerId. Does not contact anyone.";
@@ -364,6 +364,59 @@ function vendorAnswerResult(payload) {
         offer_id: conversation.offerId || ""
       },
       _meta: uiMeta(CHAT_RESOURCE)
+    };
+  }
+  if (payload.offer?.source === "choice") {
+    const offer = payload.offer;
+    const topic = topicPhrase(offer.intent, offer.intentLabel);
+    const vendorLabel = offer.vendorName || "the vendor";
+    const shown = payload.availableRep && payload.availableRep.name ? payload.availableRep : null;
+    const fields = vendorCardFields(answer, {
+      vendorName: offer.vendorName,
+      intentId: offer.intent,
+      intentLabel: offer.intentLabel,
+      topic,
+      userQuestion: offer.issueSummary,
+      offerId: offer.id,
+      representativeName: shown?.name,
+      representativeRole: shown?.role,
+      available: Boolean(shown)
+    });
+    const named = fields.rep?.name || "";
+    const suggestedMessage = named
+      ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`
+      : `You can speak live with ${vendorLabel}, talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`;
+    return {
+      content: [
+        { type: "text", text: fields.direct_answer },
+        { type: "text", text: suggestedMessage }
+      ],
+      structuredContent: {
+        answer,
+        ...fields,
+        kind: "choice",
+        state: "choice",
+        assistance: { kind: "choice", topic, ...(fields.rep ? { representative: fields.rep } : {}) },
+        status: "offered",
+        offered: true,
+        chatStarted: false,
+        offerId: offer.id,
+        offer_id: offer.id,
+        intent: offer.intent,
+        intentLabel: offer.intentLabel,
+        issueSummary: offer.issueSummary,
+        vendorName: offer.vendorName,
+        representativeName: named || null,
+        expiresAt: offer.expiresAt,
+        acceptTool: "confirm_assistance",
+        declineTool: "decline_assistance",
+        assistantTool: "talk_to_vendor_agent",
+        acceptLabel: named ? `Speak with ${named}` : "Speak Live",
+        assistantLabel: "Speak to Assistant",
+        declineLabel: "Decline",
+        suggestedMessage
+      },
+      _meta: consentMeta(uiMeta(INTENT_OFFER_RESOURCE), payload)
     };
   }
   if (payload.escalation && !payload.offer) {
@@ -664,6 +717,7 @@ SupportBridge.install = function install(server, options) {
     }
     const body = {
       ...await callerIdentity(extra),
+      ...hostFieldsFromExtra(extra),
       topic,
       question,
       ...intentFieldsFrom(mcpContextStore.getStore()),
@@ -700,7 +754,7 @@ SupportBridge.install = function install(server, options) {
 
   server.registerTool("talk_to_vendor_agent", {
     title: "Talk to the vendor assistant",
-    description: "Sends a message in the vendor assistant chat after the customer chooses Talk to the assistant. Pass the offer id and the message.",
+    description: "Sends a message in the vendor assistant chat after the customer chooses Speak to Assistant. Pass the offer id and the message.",
     inputSchema: z.object({
       offerId: z.string().optional(),
       offer_id: z.string().optional(),
@@ -966,6 +1020,28 @@ function firstText(values) {
   return "";
 }
 
+function hostFieldsFromExtra(extra) {
+  const info = extra && typeof extra === "object" ? extra : {};
+  const client = info.clientInfo && typeof info.clientInfo === "object" ? info.clientInfo : null;
+  const named = typeof client?.name === "string" ? client.name.trim() : "";
+  if (named) {
+    const version = typeof client.version === "string" ? client.version.trim() : "";
+    return {
+      hostName: named.slice(0, 80),
+      hostLabel: named.slice(0, 80),
+      ...(version ? { hostVersion: version.slice(0, 40) } : {}),
+      hostDetectedBy: "initialize"
+    };
+  }
+  const headers = info.requestInfo?.headers;
+  const agent = headers && (headers["user-agent"] || headers["User-Agent"]);
+  const ua = typeof agent === "string" ? agent.trim() : "";
+  if (/claude/i.test(ua) || /chatgpt/i.test(ua)) {
+    return { hostName: ua.slice(0, 80), hostLabel: ua.slice(0, 80), hostDetectedBy: "user-agent" };
+  }
+  return {};
+}
+
 function usableIdentity(value, placeholders) {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text || placeholders.has(text.toLowerCase())) return "";
@@ -1019,6 +1095,13 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId, note, consentNonc
     body: { ...identity, ...consentBody(consentNonce), ...(note ? { note } : {}) }
   });
   if (result == null) return serviceUnreachableResult();
+  if (result?.followUp && result?.escalation && !result?.conversation) {
+    return vendorAnswerResult({
+      answer: { text: result.escalation.answer || result.offer?.answer || "" },
+      escalation: result.escalation,
+      consentNonce: result.consentNonce
+    });
+  }
   if (!result?.conversation) {
     const status = result?.error ?? "offer_not_active";
     return {
@@ -1793,6 +1876,7 @@ ${chatPanelStyles()}
 .va-offer{display:flex; flex-direction:column; gap:10px; margin:0; background:transparent}
 .va-offer[hidden]{display:none}
 .va-rep{display:flex; flex-wrap:wrap; align-items:flex-start; gap:12px}
+#va-rep[hidden]{display:none}
 .va-avatar-wrap{position:relative; flex:none; width:36px; height:36px}
 .va-avatar{
   display:grid; place-items:center; width:36px; height:36px; border-radius:50%;
@@ -1827,12 +1911,17 @@ ${chatPanelStyles()}
 #va-helper:empty{display:none}
 .va-actions{display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:0}
 .va-actions[hidden]{display:none}
-#va-accept,#va-decline,#va-agent-send{min-height:44px; border:0; cursor:pointer; font-family:system-ui,"Segoe UI",sans-serif}
+#va-accept,#va-decline,#va-assistant,#va-agent-send{min-height:44px; border:0; cursor:pointer; font-family:system-ui,"Segoe UI",sans-serif}
 #va-accept,#va-agent-send{
   padding:11px 18px; border-radius:8px; background:#2F7D4F; color:#fff; font-size:14px; font-weight:600;
 }
+#va-assistant{
+  padding:11px 16px; border:1px solid #d9ded9; border-radius:8px; background:#fff; color:#1f2a24;
+  font-size:14px; font-weight:600;
+}
+#va-assistant[hidden]{display:none}
 #va-decline{padding:11px 8px; background:transparent; color:#5f6a64; font-size:14px; font-weight:500}
-#va-accept:disabled,#va-decline:disabled{opacity:.5; cursor:not-allowed}
+#va-accept:disabled,#va-assistant:disabled,#va-decline:disabled{opacity:.5; cursor:not-allowed}
 #va-status{margin:0; color:#5f6a64; font:400 12.5px/1.4 system-ui,"Segoe UI",sans-serif}
 #va-status:empty{display:none}
 #va-status.error{color:#8a2a2a}
@@ -1859,6 +1948,7 @@ ${chatPanelStyles()}
   .note,#subtitle,.message-who,.message-time,.chat-empty,#status,.va-source,.va-chip-label,.va-chip-unit,.va-who,#va-agent-foot{color:#C8C8C0}
   #draft,.composer-shell,.va-chip,.va-msg.assistant .va-bubble,#va-agent-input{background:#1C1C19;color:#F4F4F0;border-color:#3A3A35}
   #decline{background:#262622;color:#F4F4F0;border-color:#3A3A35}
+  #va-assistant{background:#262622;color:#F4F4F0;border-color:#3A3A35}
   .bubble,.va-msg.user .va-bubble{background:#24362C;color:#F4F4F0}
   #title,#va-vendor-name,#offer-root h1,#va-body{color:#F4F4F0}
 }
@@ -1877,7 +1967,7 @@ ${chatPanelStyles()}
       <button id="va-more" type="button" hidden aria-expanded="false">Show full answer</button>
     </div>
     <section id="va-offer" class="va-region va-offer" hidden>
-      <div class="va-rep">
+      <div id="va-rep" class="va-rep">
         <span class="va-avatar-wrap"><span id="va-avatar" class="va-avatar" aria-hidden="true"><span id="va-initials"></span><svg id="va-bubble" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.2 4.2h11.6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.4L5 14.6V12.2H3.2a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span><span id="va-dot" class="va-dot" hidden></span></span>
         <div class="va-person-copy">
           <p class="va-name-line"><span id="va-rep-heading"></span> <span id="va-pill" class="va-pill" hidden></span></p>
@@ -1890,8 +1980,9 @@ ${chatPanelStyles()}
       </div>
       <p id="va-helper"></p>
       <div id="va-actions" class="va-actions">
-        <button id="va-accept" type="button"><span id="va-accept-label">Chat with support</span></button>
-        <button id="va-decline" type="button">Not now</button>
+        <button id="va-accept" type="button"><span id="va-accept-label">Speak Live</span></button>
+        <button id="va-assistant" type="button" hidden>Speak to Assistant</button>
+        <button id="va-decline" type="button">Decline</button>
       </div>
       <p id="va-status" role="status"></p>
       <div id="va-agent" hidden>
@@ -1900,11 +1991,11 @@ ${chatPanelStyles()}
     </section>
     <form id="va-agent-form" class="va-region va-composer" hidden>
       <div class="va-compose">
-        <label class="va-sr" for="va-agent-input">Follow-up</label>
-        <input id="va-agent-input" type="text" maxlength="2000" placeholder="Ask a follow-up">
+        <label id="va-agent-label" class="va-sr" for="va-agent-input">Message</label>
+        <input id="va-agent-input" type="text" maxlength="2000" placeholder="Start a conversation with the company assistant">
         <button id="va-agent-send" type="submit">Send</button>
       </div>
-      <p id="va-agent-foot">A person is not in this chat.</p>
+      <p id="va-agent-foot">A person from the team is not in this chat.</p>
     </form>
   </article>
   <section id="offer-root" class="card" hidden aria-labelledby="offer-title">
@@ -1947,6 +2038,7 @@ const vaFacts=document.getElementById("va-facts");
 const vaBody=document.getElementById("va-body");
 const vaMore=document.getElementById("va-more");
 const vaOffer=document.getElementById("va-offer");
+const vaRep=document.getElementById("va-rep");
 const vaAvatar=document.getElementById("va-avatar");
 const vaInitials=document.getElementById("va-initials");
 const vaDot=document.getElementById("va-dot");
@@ -1960,13 +2052,17 @@ const vaHelper=document.getElementById("va-helper");
 const vaActions=document.getElementById("va-actions");
 const vaAccept=document.getElementById("va-accept");
 const vaAcceptLabel=document.getElementById("va-accept-label");
+const vaAssistant=document.getElementById("va-assistant");
 const vaDecline=document.getElementById("va-decline");
 const vaStatus=document.getElementById("va-status");
 const vaAgent=document.getElementById("va-agent");
 const vaAgentLog=document.getElementById("va-agent-log");
 const vaAgentForm=document.getElementById("va-agent-form");
 const vaAgentInput=document.getElementById("va-agent-input");
+const vaAgentLabel=document.getElementById("va-agent-label");
+const vaAgentFoot=document.getElementById("va-agent-foot");
 let vaFull="";
+let cardVendor="";
 let vaExpanded=false;
 function resultBags(result){
   if(!result||typeof result!=="object")return [];
@@ -2066,6 +2162,7 @@ function setBusy(busy){
   acceptEl.disabled=locked;
   declineEl.disabled=locked;
   if(vaAccept) vaAccept.disabled=locked;
+  if(vaAssistant) vaAssistant.disabled=locked;
   if(vaDecline) vaDecline.disabled=locked;
 }
 function renderFacts(facts){
@@ -2106,6 +2203,7 @@ function renderVendor(payload){
   const topic=payload.topic||String(payload.intentLabel||"this").toLowerCase();
   const team=payload.team||topic;
   vaVendorBadge.textContent=payload.vendor_initials||"";
+  cardVendor=vendorName;
   vaVendorName.textContent=vendorName;
   vaSourceText.textContent=payload.source_label||"Vendor docs";
   renderFacts(payload.facts);
@@ -2121,20 +2219,46 @@ function renderVendor(payload){
   offerId=payload.offer_id||payload.offerId||payload.escalationOfferId||"";
   if(payload.acceptTool) acceptTool=payload.acceptTool;
   if(payload.declineTool) declineTool=payload.declineTool;
+  if(payload.sentTitle) sentTitle=payload.sentTitle;
   const assistance=payload.assistance&&typeof payload.assistance==="object"?payload.assistance:{};
-  const kind=payload.state==="async"?"escalation":(payload.state==="live"?"live":(assistance.kind||payload.kind||(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation")));
-  const mode=kind==="agent"?"agent":(kind==="escalation"?"async":"live");
+  const kind=payload.kind==="choice"||payload.state==="choice"?"choice":(payload.state==="async"?"escalation":(payload.state==="live"?"live":(assistance.kind||payload.kind||(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation"))));
+  const mode=kind==="choice"?"choice":(kind==="agent"?"agent":(kind==="escalation"?"async":"live"));
   vaOffer.hidden=!offerId;
   vaAgent.hidden=true;
   vaAgentForm.hidden=true;
   vaActions.hidden=false;
   vaAccept.hidden=false;
   vaDecline.hidden=false;
+  if(vaRep) vaRep.hidden=mode==="choice";
+  if(vaAssistant) vaAssistant.hidden=mode!=="choice";
   vaDecline.textContent="Not now";
   vaAvatar.classList.remove("live","async","agent");
-  vaAvatar.classList.add(mode);
-  const first=payload.first_name||rep.first_name||String(rep.name||"").split(" ")[0];
-  if(mode==="agent"){
+  vaAvatar.classList.add(mode==="choice"?"agent":mode);
+  const first=payload.first_name||rep.first_name||String(rep.name||payload.representativeName||"").split(" ")[0];
+  if(mode==="choice"){
+    const named=String(rep.name||payload.representativeName||"").trim();
+    vaNote.hidden=true;
+    vaHelper.textContent="Nothing is sent until you choose.";
+    vaDecline.textContent=payload.declineLabel||"Decline";
+    if(vaAssistant) vaAssistant.textContent=payload.assistantLabel||"Speak to Assistant";
+    if(named){
+      if(vaRep) vaRep.hidden=false;
+      const parts=named.split(/\s+/).filter(Boolean);
+      const letters=parts.length>1?parts[0][0]+parts[parts.length-1][0]:parts[0][0];
+      vaInitials.textContent=rep.initials||letters.toUpperCase();
+      vaDot.hidden=false;
+      vaAvatar.classList.remove("agent");
+      vaAvatar.classList.add("live");
+      vaRepHeading.textContent=named;
+      setPill("live","Online");
+      vaRepSub.textContent="Representative at "+(vendorName||"the vendor")+", can help with "+topic;
+      const given=payload.acceptLabel&&payload.acceptLabel!=="Speak Live"?payload.acceptLabel:"";
+      vaAcceptLabel.textContent=given||("Speak with "+named);
+    }else{
+      setPill("","");
+      vaAcceptLabel.textContent=payload.acceptLabel||"Speak Live";
+    }
+  }else if(mode==="agent"){
     vaInitials.textContent=payload.vendor_initials||"A";
     vaDot.hidden=true;
     vaRepHeading.textContent="Vendor assistant";
@@ -2275,6 +2399,18 @@ function openAgentChat(){
   vaNote.hidden=true;
   vaHelper.textContent="";
   vaActions.hidden=true;
+  const company=String(cardVendor||vaVendorName.textContent||"the company").trim()||"the company";
+  if(vaRep) vaRep.hidden=false;
+  vaInitials.textContent=vaVendorBadge.textContent||"A";
+  vaDot.hidden=true;
+  vaAvatar.classList.remove("live","async");
+  vaAvatar.classList.add("agent");
+  vaRepHeading.textContent=company+" assistant";
+  setPill("agent","Assistant");
+  vaRepSub.textContent="Start a conversation with the "+company+" company assistant.";
+  if(vaAgentLabel) vaAgentLabel.textContent="Message to the "+company+" assistant";
+  vaAgentInput.placeholder="Start a conversation with the "+company+" assistant";
+  if(vaAgentFoot) vaAgentFoot.textContent="A person from the team is not in this chat.";
   vaAgent.hidden=false;
   vaAgentForm.hidden=false;
 }
@@ -2318,6 +2454,15 @@ async function sendAgent(text){
   setBusy(false);
   fitFrame();
 }
+vaAssistant.onclick=()=>{
+  if(!offerId||settled||pendingAction||offerClosed)return;
+  openAgentChat();
+  vaStatus.classList.remove("error");
+  vaStatus.textContent="";
+  setBusy(false);
+  vaAgentInput.focus();
+  fitFrame();
+};
 vaAccept.onclick=async()=>{
   if(!offerId||settled||pendingAction||offerClosed)return;
   setBusy(true);
@@ -2335,6 +2480,16 @@ vaAccept.onclick=async()=>{
     const args=withConsent({offer_id:offerId,offerId:offerId});
     if(!vaNote.hidden) args.note=vaNoteText.value.trim();
     const result=await callTool(acceptTool,args);
+    captureConsent(result);
+    const payload=mountPayload(result);
+    const followUp=!result.isError&&payload&&(payload.state==="async"||payload.kind==="escalation")&&payload.acceptTool==="file_escalation";
+    if(followUp){
+      pendingAction=false;
+      settled=false;
+      offerClosed=false;
+      renderVendor(payload);
+      return;
+    }
     if(acceptTool==="file_escalation"){
       const filed=statusOf(result);
       if(filed==="pending"){

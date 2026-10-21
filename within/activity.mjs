@@ -438,6 +438,29 @@ function titleSentence(rows) {
   return `${titles[0]}, then ${titles.slice(1).map(lowerFirst).join(", then ")}.`;
 }
 
+function finishSentence(text) {
+  const trimmed = String(text || "").replace(/\s+/g, " ").trim();
+  if (!trimmed) return "";
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/** One or two sentences from the host's own context. The latest sentence is what they are doing now. */
+function hostIntentSentence(rows) {
+  const intents = [];
+  for (const row of rows) {
+    const intent = String(row?.mcpIntent || "").replace(/\s+/g, " ").trim().slice(0, 300);
+    if (!intent) continue;
+    if (intents.some(item => item.toLowerCase() === intent.toLowerCase())) continue;
+    intents.push(intent);
+  }
+  if (!intents.length) return "";
+  const first = finishSentence(intents[0]);
+  const last = finishSentence(intents.at(-1));
+  if (first.toLowerCase() === last.toLowerCase()) return first.slice(0, 400);
+  const sentence = `${first} ${last}`;
+  return sentence.length <= 400 ? sentence : last.slice(0, 400);
+}
+
 function assistanceIntent(row) {
   if (String(row?.toolName ?? "") !== "offer_assistance") return null;
   return intentById(row?.tokens?.intent) || intentFromText(eventGist(row)) || intentById("demo");
@@ -563,8 +586,8 @@ function trailingAssistance(rows) {
 }
 
 /**
- * Deterministic job sentence from stored gists and assistance state.
- * Failures are not part of this sentence.
+ * Deterministic job sentence from the host's context, then stored gists and assistance state.
+ * Failures are not part of this sentence. A model sentence can replace this later.
  */
 export function customerContextJob(activity, options = {}) {
   const rows = (Array.isArray(activity) ? activity.filter(Boolean) : []).slice(-12);
@@ -585,6 +608,8 @@ export function customerContextJob(activity, options = {}) {
   if (!rows.length) {
     return { sentence: "No recent tool activity.", intentId: "", stuck: false };
   }
+  const fromHost = hostIntentSentence(rows);
+  if (fromHost) return { sentence: fromHost, intentId: "", stuck: false };
   const assist = trailingAssistance(rows);
   if (assist) return { sentence: askedSentence(assist), intentId: assist.id, stuck: false };
   const searches = rows.filter(isCompanySearch);
