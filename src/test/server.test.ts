@@ -25,7 +25,7 @@ async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
 
 
 
-test("installs only the npm SDK tools beside the five business tools", async () => {
+test("installs only the local SDK tools beside the five business tools", async () => {
   const { client, server } = await connectedClient();
   try {
     const { tools } = await client.listTools();

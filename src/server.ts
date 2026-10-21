@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { instrument } from "@posthog/mcp";
 import { posthogClient } from "./analytics.js";
-import { SERVER_INSTRUCTIONS, SupportBridge } from "@getwithin/sdk";
+import { SERVER_INSTRUCTIONS, SupportBridge } from "../within/sdk/index.mjs";
 import { withCompanyAccess } from "./company-access.js";
 import { companies, type Company, type Industry } from "./data.js";
 

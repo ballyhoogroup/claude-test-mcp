@@ -24,7 +24,7 @@ so it works with:
 | `get_company` | Look up one company by its `id` (e.g. `co-001`). |
 | `list_industries` | List the four industries with company counts. |
 
-The five business catalog tools are wrapped by @getwithin/sdk, which also registers the support tools and UI resources.
+The five business catalog tools are wrapped by the local SupportBridge SDK, which registers the support tools and UI resources.
 
 ## Project layout
 
@@ -196,7 +196,9 @@ transactional store before this can enforce a production-wide allowance.
 
 ## SupportBridge
 
-The npm package @getwithin/sdk is installed on the existing MCP server. Set
+The SupportBridge SDK is copied from commit e78d7db into within/sdk/index.mjs,
+within/activity.mjs, and within/intents.mjs, preserving their relative imports.
+No npm SupportBridge package is used. Set
 SUPPORTBRIDGE_URL to https://app.getwith.in and SUPPORTBRIDGE_SOURCE to
 pitch-fork-mcp in Render Environment. Set SUPPORTBRIDGE_API_KEY privately
 to this company's key; never commit it or paste it into chat. The Render
