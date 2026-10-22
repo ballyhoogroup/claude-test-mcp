@@ -82,6 +82,19 @@ const OFFER_CONNECT_INPUT = z.object({
   offerId: looseField("Offer id (camelCase). Same as offer_id.")
 }).passthrough();
 
+/** Loose follow-up schema. ChatGPT hosts reject strict schemas. Omitted action means decline. */
+const DECLINE_FOLLOW_UP_INPUT = z.object({
+  offer_id: looseField("Offer id from the assistance card or invitation"),
+  offerId: looseField("Offer id (camelCase). Same as offer_id."),
+  conversation_id: looseField("Open conversation id for get_messages, send_message, and end."),
+  text: looseField("Message text for action assistant or send_message."),
+  client_message_id: looseField("Idempotency key for action send_message."),
+  after: looseField("Poll cursor for action get_messages."),
+  note: looseField("Note text for action file_note."),
+  consentNonce: looseField("One-time consent nonce from the card, when the card has one."),
+  action: looseField("decline, assistant, file_note, get_messages, send_message, end, or get_offer. Omitted means decline.")
+}).passthrough();
+
 export const SDK_VERSION = "0.1.1";
 export const CHAT_RESOURCE = "ui://supportbridge/chat";
 export const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
@@ -98,16 +111,16 @@ function frameSize(resourceUri) {
 
 const SECURITY_CUES = intentById("security").words.join(", ");
 
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. Speak to a Live Person calls confirm_assistance with the offer id. Speak to Assistant stays on this card, and talk_to_vendor_agent runs when the customer sends a message. Decline calls decline_assistance. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. If a representative already offered help and there is no offer id, call confirm_assistance with no offer id. confirm_assistance and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
 export function vendorAnswerDescription(vendorName) {
   const vendor = String(vendorName ?? "").trim() || "this vendor";
-  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds.`;
+  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Calling it contacts nobody. Answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call.`;
 }
-export const CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts. Pass the offerId from the assistance card or from the assistance object on an earlier tool result. With no offer id, accepts a pending manual offer for this session. Returns the conversation status.";
-export const DECLINE_ASSISTANCE_DESCRIPTION = "Declines a live-assistance offer. Pass the offerId. Does not contact anyone.";
+export const CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat only after the customer chooses a live person. Pass the offer id. With no offer id, accepts the pending manual offer for this session.";
+export const DECLINE_ASSISTANCE_DESCRIPTION = "The follow-up for every choice that is not opening a live chat. Actions: decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. The vendor is contacted only after confirm_assistance or file_note succeeds.";
 
 /** Copy a vendor tool without rewriting its description. Result interception stays on the installed wrapper. */
 export function wrapTool(tool, options = {}) {
@@ -189,6 +202,7 @@ export function liveOfferCopy(offer) {
     declineLabel: "Not now",
     acceptTool: "confirm_assistance",
     declineTool: "decline_assistance",
+    declineAction: "decline",
     suggestedMessage: `${name} can help with ${topic} now. Want to connect?`
   };
 }
@@ -235,8 +249,10 @@ export function asyncEscalationCopy(note) {
     draftNote: assistanceDraft(note),
     acceptLabel: "Send note",
     declineLabel: "Not now",
-    acceptTool: "file_escalation",
-    declineTool: "decline_escalation",
+    acceptTool: "decline_assistance",
+    acceptAction: "file_note",
+    declineTool: "decline_assistance",
+    declineAction: "decline",
     sentTitle: `Sent to ${vendor}.`,
     suggestedMessage: "I've drafted a note you can send with the button above."
   };
@@ -338,6 +354,17 @@ function consentMeta(meta, payload) {
   return { ...meta, "supportbridge/consentNonce": nonce };
 }
 
+function nextCall({ tool, action, offerId, label, suggestedMessage, conversationId }) {
+  return {
+    tool,
+    ...(action ? { action } : {}),
+    ...(offerId ? { offerId } : {}),
+    ...(conversationId ? { conversation_id: conversationId } : {}),
+    ...(label ? { label } : {}),
+    ...(suggestedMessage ? { suggestedMessage } : {})
+  };
+}
+
 function vendorAnswerResult(payload) {
   const answer = payload.answer && typeof payload.answer === "object" ? payload.answer : { text: String(payload.answer ?? "") };
   if (payload.conversation?.id) {
@@ -361,7 +388,14 @@ function vendorAnswerResult(payload) {
         representativeRole: conversation.representativeRole || "",
         vendorName: conversation.vendorName || "",
         offerId: conversation.offerId || "",
-        offer_id: conversation.offerId || ""
+        offer_id: conversation.offerId || "",
+        next: [nextCall({
+          tool: "decline_assistance",
+          action: "get_messages",
+          offerId: conversation.offerId || "",
+          conversationId: conversation.id,
+          suggestedMessage: `You already have a live chat with ${name}. Opening that conversation.`
+        })]
       },
       _meta: uiMeta(CHAT_RESOURCE)
     };
@@ -383,9 +417,10 @@ function vendorAnswerResult(payload) {
       available: Boolean(shown)
     });
     const named = fields.rep?.name || "";
+    const liveLabel = named ? `Speak with ${named}` : "Speak to a Live Person";
     const suggestedMessage = named
-      ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`
-      : `You can ask for a live person at ${vendorLabel} (if nobody is free, you can leave a note), talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`;
+      ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose. Speak to a Live Person calls confirm_assistance with offer id ${offer.id}. Speak to Assistant calls decline_assistance with action assistant. Decline calls decline_assistance with action decline.`
+      : `You can ask for a live person at ${vendorLabel} (if nobody is free, you can leave a note), talk to the assistant, or decline. Nothing is sent until you choose. Speak to a Live Person calls confirm_assistance with offer id ${offer.id}. Speak to Assistant calls decline_assistance with action assistant. Decline calls decline_assistance with action decline.`;
     return {
       content: [
         { type: "text", text: fields.direct_answer },
@@ -410,11 +445,18 @@ function vendorAnswerResult(payload) {
         expiresAt: offer.expiresAt,
         acceptTool: "confirm_assistance",
         declineTool: "decline_assistance",
-        assistantTool: "talk_to_vendor_agent",
-        acceptLabel: named ? `Speak with ${named}` : "Speak to a Live Person",
+        declineAction: "decline",
+        assistantTool: "decline_assistance",
+        assistantAction: "assistant",
+        acceptLabel: liveLabel,
         assistantLabel: "Speak to Assistant",
         declineLabel: "Decline",
-        suggestedMessage
+        suggestedMessage,
+        next: [
+          nextCall({ tool: "confirm_assistance", offerId: offer.id, label: liveLabel, suggestedMessage }),
+          nextCall({ tool: "decline_assistance", action: "assistant", offerId: offer.id, label: "Speak to Assistant", suggestedMessage }),
+          nextCall({ tool: "decline_assistance", action: "decline", offerId: offer.id, label: "Decline", suggestedMessage })
+        ]
       },
       _meta: consentMeta(uiMeta(INTENT_OFFER_RESOURCE), payload)
     };
@@ -464,7 +506,11 @@ function vendorAnswerResult(payload) {
         issueSummary: note.issueSummary,
         vendorName: note.vendorName,
         expiresAt: note.expiresAt,
-        ...copy
+        ...copy,
+        next: [
+          nextCall({ tool: "decline_assistance", action: "file_note", offerId: note.id, label: "Send note", suggestedMessage: copy.suggestedMessage }),
+          nextCall({ tool: "decline_assistance", action: "decline", offerId: note.id, label: "Not now", suggestedMessage: copy.suggestedMessage })
+        ]
       },
       _meta: consentMeta(uiMeta(INTENT_OFFER_RESOURCE), payload)
     };
@@ -503,11 +549,17 @@ function vendorAnswerResult(payload) {
         issueSummary: offer.issueSummary,
         vendorName: offer.vendorName,
         expiresAt: offer.expiresAt,
-        acceptTool: "talk_to_vendor_agent",
+        acceptTool: "decline_assistance",
+        acceptAction: "assistant",
         declineTool: "decline_assistance",
+        declineAction: "decline",
         acceptLabel: "Talk to the assistant",
         declineLabel: "Not now",
-        suggestedMessage
+        suggestedMessage,
+        next: [
+          nextCall({ tool: "decline_assistance", action: "assistant", offerId: offer.id, label: "Talk to the assistant", suggestedMessage }),
+          nextCall({ tool: "decline_assistance", action: "decline", offerId: offer.id, label: "Not now", suggestedMessage })
+        ]
       },
       _meta: uiMeta(INTENT_OFFER_RESOURCE)
     };
@@ -558,7 +610,11 @@ function vendorAnswerResult(payload) {
         representativeRole: offer.representativeRole,
         vendorName: offer.vendorName,
         expiresAt: offer.expiresAt,
-        ...copy
+        ...copy,
+        next: [
+          nextCall({ tool: "confirm_assistance", offerId: offer.id, label: copy.acceptLabel, suggestedMessage: copy.suggestedMessage }),
+          nextCall({ tool: "decline_assistance", action: "decline", offerId: offer.id, label: copy.declineLabel, suggestedMessage: copy.suggestedMessage })
+        ]
       },
       _meta: consentMeta({
         ...uiMeta(INTENT_OFFER_RESOURCE),
@@ -710,7 +766,7 @@ SupportBridge.install = function install(server, options) {
 
   const chatMeta = uiMeta(CHAT_RESOURCE);
   const intentOfferMeta = uiMeta(INTENT_OFFER_RESOURCE);
-  const appOnlyChatMeta = appOnlyMeta();
+  const followUpMeta = { "openai/widgetAccessible": true };
 
   const answerTool = async (args, extra) => {
     const topic = String(args?.topic ?? args?.intent ?? "").trim();
@@ -759,38 +815,6 @@ SupportBridge.install = function install(server, options) {
     _meta: intentOfferMeta
   }, answerTool);
 
-  server.registerTool("talk_to_vendor_agent", {
-    title: "Talk to the vendor assistant",
-    description: "Sends a message in the vendor assistant chat after the customer chooses Speak to Assistant. Pass the offer id and the message.",
-    inputSchema: z.object({
-      offerId: z.string().optional(),
-      offer_id: z.string().optional(),
-      text: z.string().max(2_000).optional()
-    }).passthrough(),
-    _meta: appOnlyMeta()
-  }, async (args, extra) => {
-    const result = await serviceFetch(baseUrl, options.apiKey, "/v1/agent-chat", {
-      method: "POST",
-      body: {
-        ...await callerIdentity(extra),
-        offerId: normalizeOfferArgs(args).offerId,
-        text: args?.text
-      }
-    });
-    if (result == null) return serviceUnreachableResult();
-    if (!result?.reply) {
-      return {
-        isError: true,
-        content: [{ type: "text", text: "The vendor assistant could not reply. No person was contacted." }],
-        structuredContent: { status: result?.error ?? "agent_unavailable" }
-      };
-    }
-    return {
-      content: [{ type: "text", text: result.reply }],
-      structuredContent: result
-    };
-  });
-
   server.registerTool("confirm_assistance", {
     title: "Confirm assistance",
     description: CONFIRM_ASSISTANCE_DESCRIPTION,
@@ -798,60 +822,12 @@ SupportBridge.install = function install(server, options) {
     _meta: chatMeta
   }, async (args, extra) => confirmAssistance(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, noteArg(args), args?.consentNonce));
 
-  server.registerTool("file_escalation", {
-    title: "File escalation",
-    description: "Files an async note the customer agreed to send when no representative was available. Pass the escalationOfferId from that offer. Does not start a chat.",
-    inputSchema: OFFER_CONNECT_INPUT,
-    _meta: appOnlyMeta()
-  }, async (args, extra) => fileEscalation(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId, args?.note, args?.consentNonce));
-
-  server.registerTool("decline_escalation", {
-    title: "Decline escalation",
-    description: "Declines an async note offer. Pass the escalationOfferId. Does not contact anyone.",
-    inputSchema: OFFER_CONNECT_INPUT,
-    _meta: appOnlyMeta()
-  }, async (args, extra) => declineEscalation(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId));
-
   server.registerTool("decline_assistance", {
     title: "Decline assistance",
     description: DECLINE_ASSISTANCE_DESCRIPTION,
-    inputSchema: OFFER_CONNECT_INPUT
-  }, async (args, extra) => declineOffer(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId));
-
-  server.registerTool("support_get_messages", {
-    title: "Get assistance messages",
-    description: "Reads assistance chat messages after a cursor. Used by the open chat.",
-    inputSchema: {
-      conversation_id: z.string(),
-      after: z.number().optional()
-    },
-    _meta: appOnlyChatMeta
-  }, async (args, extra) => pollMessages(baseUrl, options.apiKey, await callerIdentity(extra), args));
-
-  server.registerTool("support_send_message", {
-    title: "Send assistance message",
-    description: "Sends a customer message in an accepted assistance conversation. Used by the open chat.",
-    inputSchema: {
-      conversation_id: z.string(),
-      text: z.string(),
-      client_message_id: z.string()
-    },
-    _meta: appOnlyChatMeta
-  }, async (args, extra) => sendCustomerMessage(baseUrl, options.apiKey, await callerIdentity(extra), args));
-
-  server.registerTool("support_end_session", {
-    title: "End assistance session",
-    description: "Ends an assistance conversation. Used by the open chat.",
-    inputSchema: { conversation_id: z.string() },
-    _meta: appOnlyChatMeta
-  }, async (args, extra) => endCustomerConversation(baseUrl, options.apiKey, await callerIdentity(extra), args?.conversation_id));
-
-  server.registerTool("support_get_offer", {
-    title: "Get assistance offer",
-    description: "Reads whether an assistance offer already has a chat. Used by the offer card when it reopens.",
-    inputSchema: OFFER_CONNECT_INPUT,
-    _meta: appOnlyChatMeta
-  }, async (args, extra) => readCustomerOffer(baseUrl, options.apiKey, await callerIdentity(extra), normalizeOfferArgs(args).offerId));
+    inputSchema: DECLINE_FOLLOW_UP_INPUT,
+    _meta: followUpMeta
+  }, async (args, extra) => declineAssistance(baseUrl, options.apiKey, await callerIdentity(extra), args));
 
   registerResource(server, "Within chat", CHAT_RESOURCE, appHtml.chat ?? chatHtml());
   registerResource(server, "Within assistance offer", INTENT_OFFER_RESOURCE, appHtml.intentOffer ?? intentOfferHtml());
@@ -949,14 +925,6 @@ function uiMeta(resourceUri) {
     },
     "ui/resourceUri": resourceUri,
     "openai/outputTemplate": resourceUri,
-    "openai/widgetAccessible": true
-  };
-}
-
-/** Callable from the open chat, with no transcript card of its own. */
-function appOnlyMeta() {
-  return {
-    ui: { visibility: ["app"] },
     "openai/widgetAccessible": true
   };
 }
@@ -1371,6 +1339,97 @@ async function endCustomerConversation(baseUrl, apiKey, identity, conversationId
   };
 }
 
+const FOLLOW_UP_ACTIONS = new Set(["decline", "assistant", "file_note", "get_messages", "send_message", "end", "get_offer"]);
+
+function normalizedAction(value) {
+  if (value == null || String(value).trim() === "") return "decline";
+  const action = String(value).trim().toLowerCase();
+  return FOLLOW_UP_ACTIONS.has(action) ? action : "";
+}
+
+function textArg(args) {
+  return typeof args?.text === "string" ? args.text : "";
+}
+
+function conversationArg(args) {
+  const value = args?.conversation_id ?? args?.conversationId;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function clientMessageArg(args) {
+  const value = args?.client_message_id ?? args?.clientMessageId;
+  return typeof value === "string" ? value : "";
+}
+
+function conversationRequired(conversationId) {
+  if (conversationId) return null;
+  return {
+    isError: true,
+    content: [{ type: "text", text: "A conversation id is required." }],
+    structuredContent: { status: "conversation_id_required", chatStarted: false }
+  };
+}
+
+async function replyToVendorAgent(baseUrl, apiKey, identity, offerId, text) {
+  const result = await serviceFetch(baseUrl, apiKey, "/v1/agent-chat", {
+    method: "POST",
+    body: { ...identity, offerId, text }
+  });
+  if (result == null) return serviceUnreachableResult();
+  if (!result?.reply) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: "The vendor assistant could not reply. No person was contacted." }],
+      structuredContent: { status: result?.error ?? "agent_unavailable" }
+    };
+  }
+  return {
+    content: [{ type: "text", text: result.reply }],
+    structuredContent: result
+  };
+}
+
+async function declineAssistance(baseUrl, apiKey, identity, args) {
+  const action = normalizedAction(args?.action);
+  if (!action) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: "Pass action decline, assistant, file_note, get_messages, send_message, end, or get_offer." }],
+      structuredContent: { status: "action_unknown", chatStarted: false }
+    };
+  }
+  const offerId = normalizeOfferArgs(args).offerId;
+  if (action === "assistant") return replyToVendorAgent(baseUrl, apiKey, identity, offerId, textArg(args));
+  if (action === "file_note") {
+    return fileEscalation(baseUrl, apiKey, identity, offerId, noteArg(args) || textArg(args), args?.consentNonce);
+  }
+  if (action === "get_messages") {
+    const conversationId = conversationArg(args);
+    const missing = conversationRequired(conversationId);
+    if (missing) return missing;
+    return pollMessages(baseUrl, apiKey, identity, { conversation_id: conversationId, after: args?.after });
+  }
+  if (action === "send_message") {
+    const conversationId = conversationArg(args);
+    const missing = conversationRequired(conversationId);
+    if (missing) return missing;
+    return sendCustomerMessage(baseUrl, apiKey, identity, {
+      conversation_id: conversationId,
+      text: textArg(args),
+      client_message_id: clientMessageArg(args)
+    });
+  }
+  if (action === "end") {
+    const conversationId = conversationArg(args);
+    const missing = conversationRequired(conversationId);
+    if (missing) return missing;
+    return endCustomerConversation(baseUrl, apiKey, identity, conversationId);
+  }
+  if (action === "get_offer") return readCustomerOffer(baseUrl, apiKey, identity, offerId);
+  if (String(offerId).startsWith("esc_")) return declineEscalation(baseUrl, apiKey, identity, offerId);
+  return declineOffer(baseUrl, apiKey, identity, offerId);
+}
+
 function transcript(result) {
   if (!result?.messages) return "No conversation is available.";
   if (!result.messages.length) return "No new messages.";
@@ -1699,7 +1758,7 @@ function applyResult(data){
 async function refresh(){
   if(!conversationId||ended)return;
   try{
-    const result=await callTool("support_get_messages",{conversation_id:conversationId,after:cursor||0});
+    const result=await callTool("decline_assistance",{action:"get_messages",conversation_id:conversationId,after:cursor||0});
     const payload=result&&(result.structuredContent||result)||{};
     if(result&&result.isError) throw new Error("poll");
     applyResult(payload);
@@ -1733,7 +1792,7 @@ function startChatSession(initial){
     if(!pendingClientId) pendingClientId=crypto.randomUUID();
     setSendStatus("");
     try{
-      const result=await callTool("support_send_message",{conversation_id:conversationId,text,client_message_id:pendingClientId});
+      const result=await callTool("decline_assistance",{action:"send_message",conversation_id:conversationId,text,client_message_id:pendingClientId});
       const payload=result&&(result.structuredContent||result)||{};
       if(!result||result.isError||payload.status!=="sent"){
         setSendStatus("Message not sent. Try again.");
@@ -1761,7 +1820,7 @@ function startChatSession(initial){
     endEl.textContent="End";
     endEl.disabled=true;
     try{
-      const result=await callTool("support_end_session",{conversation_id:conversationId});
+      const result=await callTool("decline_assistance",{action:"end",conversation_id:conversationId});
       const payload=result&&(result.structuredContent||result)||{};
       if(!result||result.isError||payload.status!=="ended"){
         setSendStatus("The chat could not be ended. Try again.");
@@ -2017,6 +2076,7 @@ ${chatPanelStyles()}
 let offerId="";
 let acceptTool="confirm_assistance";
 let declineTool="decline_assistance";
+let acceptAction="";
 let sentTitle="";
 let settled=false;
 let pendingAction=false;
@@ -2132,6 +2192,7 @@ function apply(data){
   offerId=payload.offerId||payload.offer_id||payload.escalationOfferId||offerId;
   if(payload.acceptTool) acceptTool=payload.acceptTool;
   if(payload.declineTool) declineTool=payload.declineTool;
+  if(payload.acceptTool||payload.acceptAction) acceptAction=payload.acceptAction||"";
   if(payload.cardTitle){
     if(offerRootEl) offerRootEl.hidden=false;
     eyebrowEl.textContent=payload.cardEyebrow||eyebrowEl.textContent;
@@ -2220,9 +2281,10 @@ function renderVendor(payload){
   offerId=payload.offer_id||payload.offerId||payload.escalationOfferId||"";
   if(payload.acceptTool) acceptTool=payload.acceptTool;
   if(payload.declineTool) declineTool=payload.declineTool;
+  if(payload.acceptTool||payload.acceptAction) acceptAction=payload.acceptAction||"";
   if(payload.sentTitle) sentTitle=payload.sentTitle;
   const assistance=payload.assistance&&typeof payload.assistance==="object"?payload.assistance:{};
-  const kind=payload.kind==="choice"||payload.state==="choice"?"choice":(payload.state==="async"?"escalation":(payload.state==="live"?"live":(assistance.kind||payload.kind||(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation"))));
+  const kind=payload.kind==="choice"||payload.state==="choice"?"choice":(payload.state==="async"?"escalation":(payload.state==="live"?"live":(assistance.kind||payload.kind||(acceptAction==="assistant"?"agent":(acceptTool==="request_assistance"||acceptTool==="confirm_assistance"?"live":"escalation")))));
   const mode=kind==="choice"?"choice":(kind==="agent"?"agent":(kind==="escalation"?"async":"live"));
   vaOffer.hidden=!offerId;
   vaAgent.hidden=true;
@@ -2317,7 +2379,7 @@ readHostOutput().then(apply).then(()=>{ if(!pendingAction&&!settled) setBusy(fal
 async function resumeAcceptedOffer(){
   if(settled||!offerId)return;
   try{
-    const result=await callTool("support_get_offer",{offer_id:offerId,offerId:offerId});
+    const result=await callTool("decline_assistance",{action:"get_offer",offer_id:offerId,offerId:offerId});
     if(settled)return;
     const payload=mountPayload(result&&(result.structuredContent||result));
     const conversationId=conversationIdOf(payload);
@@ -2330,10 +2392,24 @@ acceptEl.onclick=async()=>{
   if(!offerId||settled||pendingAction||offerClosed)return;
   setBusy(true);
   statusEl.classList.remove("error");
-  statusEl.textContent=acceptTool==="file_escalation"?"Sending…":"Connecting…";
+  statusEl.textContent=acceptAction==="file_note"?"Sending…":"Connecting…";
   try{
-    const result=await callTool(acceptTool,withConsent({offer_id:offerId,offerId:offerId}));
-    if(acceptTool==="file_escalation"){
+    const args=withConsent({offer_id:offerId,offerId:offerId});
+    let result;
+    if(acceptAction==="file_note"){
+      args.action="file_note";
+      result=await callTool("decline_assistance",args);
+    }else if(acceptAction==="assistant"){
+      result=await callTool("decline_assistance",{action:"assistant",offer_id:offerId,offerId:offerId});
+      const reply=mountPayload(result).reply||"";
+      statusEl.classList.toggle("error",!reply);
+      statusEl.textContent=reply||"Could not reach the assistant.";
+      setBusy(false);
+      return;
+    }else{
+      result=await callTool("confirm_assistance",args);
+    }
+    if(acceptAction==="file_note"){
       const filed=statusOf(result);
       if(filed==="pending"){
         settled=true;
@@ -2377,11 +2453,11 @@ declineEl.onclick=async()=>{
   statusEl.classList.remove("error");
   statusEl.textContent="Declining…";
   try{
-    await callTool(declineTool,{offer_id:offerId,offerId:offerId});
+    await callTool("decline_assistance",{action:"decline",offer_id:offerId,offerId:offerId});
     settled=true;
     offerClosed=true;
     stopPolling();
-    statusEl.textContent=declineTool==="decline_escalation"?"Not sent.":"Declined. No one was contacted.";
+    statusEl.textContent=acceptAction==="file_note"?"Not sent.":"Declined. No one was contacted.";
   }catch(error){
     statusEl.classList.add("error");
     statusEl.textContent=error.message||"Could not decline this offer.";
@@ -2423,7 +2499,7 @@ async function sendAgent(text){
     setBusy(false);
     return;
   }
-  const result=await callTool("talk_to_vendor_agent",{offer_id:offerId,offerId:offerId,text:cleaned});
+  const result=await callTool("decline_assistance",{action:"assistant",offer_id:offerId,offerId:offerId,text:cleaned});
   const payload=mountPayload(result);
   const messages=Array.isArray(payload.messages)?payload.messages:[];
   if(!messages.length){
@@ -2468,9 +2544,9 @@ vaAccept.onclick=async()=>{
   if(!offerId||settled||pendingAction||offerClosed)return;
   setBusy(true);
   vaStatus.classList.remove("error");
-  vaStatus.textContent=acceptTool==="file_escalation"?"Sending…":"Connecting…";
+  vaStatus.textContent=acceptAction==="file_note"?"Sending…":"Connecting…";
   try{
-    if(acceptTool==="talk_to_vendor_agent"){
+    if(acceptAction==="assistant"){
       openAgentChat();
       vaStatus.textContent="";
       setBusy(false);
@@ -2479,11 +2555,18 @@ vaAccept.onclick=async()=>{
       return;
     }
     const args=withConsent({offer_id:offerId,offerId:offerId});
-    if(!vaNote.hidden) args.note=vaNoteText.value.trim();
-    const result=await callTool(acceptTool,args);
+    let result;
+    if(acceptAction==="file_note"){
+      args.action="file_note";
+      if(!vaNote.hidden) args.note=vaNoteText.value.trim();
+      result=await callTool("decline_assistance",args);
+    }else{
+      if(!vaNote.hidden) args.note=vaNoteText.value.trim();
+      result=await callTool("confirm_assistance",args);
+    }
     captureConsent(result);
     const payload=mountPayload(result);
-    const followUp=!result.isError&&payload&&(payload.state==="async"||payload.kind==="escalation")&&payload.acceptTool==="file_escalation";
+    const followUp=!result.isError&&payload&&(payload.state==="async"||payload.kind==="escalation")&&payload.acceptAction==="file_note";
     if(followUp){
       pendingAction=false;
       settled=false;
@@ -2491,7 +2574,7 @@ vaAccept.onclick=async()=>{
       renderVendor(payload);
       return;
     }
-    if(acceptTool==="file_escalation"){
+    if(acceptAction==="file_note"){
       const filed=statusOf(result);
       if(filed==="pending"){
         settled=true;
@@ -2532,11 +2615,11 @@ vaDecline.onclick=async()=>{
   vaStatus.classList.remove("error");
   vaStatus.textContent="Declining…";
   try{
-    await callTool(declineTool,{offer_id:offerId,offerId:offerId});
+    await callTool("decline_assistance",{action:"decline",offer_id:offerId,offerId:offerId});
     settled=true;
     offerClosed=true;
     stopPolling();
-    vaStatus.textContent=declineTool==="decline_escalation"?"Not sent.":"Declined. No one was contacted.";
+    vaStatus.textContent=acceptAction==="file_note"?"Not sent.":"Declined. No one was contacted.";
     vaAccept.disabled=true;
     vaDecline.disabled=true;
   }catch(error){

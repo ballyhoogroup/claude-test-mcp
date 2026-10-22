@@ -30,8 +30,8 @@ test("installs only the local SDK tools beside the five business tools", async (
   try {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), [
-      "confirm_assistance", "decline_assistance", "decline_escalation", "fetch", "file_escalation", "get_company", "get_vendor_answer",
-      "list_companies", "list_industries", "search", "support_end_session", "support_get_messages", "support_get_offer", "support_send_message", "talk_to_vendor_agent",
+      "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer",
+      "list_companies", "list_industries", "search",
     ]);
     assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
@@ -133,8 +133,8 @@ test("PostHog instrumentation records each tool call once and preserves existing
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 15);
-    assert.equal(new Set(tools.map(tool => tool.name)).size, 15);
+    assert.equal(tools.length, 8);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, 8);
     assert.equal(tools.find(tool => tool.name === "list_industries")?.description, "List Pitch Fork industries and company counts.");
     const result = await client.callTool({ name: "list_industries", arguments: {} });
     assert.notEqual(result.isError, true);
