@@ -98,13 +98,13 @@ function frameSize(resourceUri) {
 
 const SECURITY_CUES = intentById("security").words.join(", ");
 
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak Live, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. Speak Live calls confirm_assistance with the offer id. Speak to Assistant stays on this card, and talk_to_vendor_agent runs when the customer sends a message. Decline calls decline_assistance. If Speak Live finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. If a representative already offered help and there is no offer id, call confirm_assistance with no offer id. confirm_assistance and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. Speak to a Live Person calls confirm_assistance with the offer id. Speak to Assistant stays on this card, and talk_to_vendor_agent runs when the customer sends a message. Decline calls decline_assistance. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds. When the result includes assistance or escalation, also relay the suggested message. Calling get_vendor_answer does not contact anyone. If a representative already offered help and there is no offer id, call confirm_assistance with no offer id. confirm_assistance and file_escalation run only after the user explicitly chooses. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
 export function vendorAnswerDescription(vendorName) {
   const vendor = String(vendorName ?? "").trim() || "this vendor";
-  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. Relay Speak Live, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. If Speak Live finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds.`;
+  return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. confirm_assistance and talk_to_vendor_agent run only after the customer chooses. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. A note is not a chat. The vendor is contacted only after confirm_assistance or file_escalation succeeds.`;
 }
 export const CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat after the user accepts. Pass the offerId from the assistance card or from the assistance object on an earlier tool result. With no offer id, accepts a pending manual offer for this session. Returns the conversation status.";
 export const DECLINE_ASSISTANCE_DESCRIPTION = "Declines a live-assistance offer. Pass the offerId. Does not contact anyone.";
@@ -385,7 +385,7 @@ function vendorAnswerResult(payload) {
     const named = fields.rep?.name || "";
     const suggestedMessage = named
       ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`
-      : `You can speak live with ${vendorLabel}, talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`;
+      : `You can ask for a live person at ${vendorLabel} (if nobody is free, you can leave a note), talk to the assistant, or decline. Nothing is sent until you choose. confirm_assistance and talk_to_vendor_agent run only after the customer chooses.`;
     return {
       content: [
         { type: "text", text: fields.direct_answer },
@@ -411,7 +411,7 @@ function vendorAnswerResult(payload) {
         acceptTool: "confirm_assistance",
         declineTool: "decline_assistance",
         assistantTool: "talk_to_vendor_agent",
-        acceptLabel: named ? `Speak with ${named}` : "Speak Live",
+        acceptLabel: named ? `Speak with ${named}` : "Speak to a Live Person",
         assistantLabel: "Speak to Assistant",
         declineLabel: "Decline",
         suggestedMessage
@@ -633,6 +633,19 @@ SupportBridge.install = function install(server, options) {
   const callerIdentity = context => identityOf(identify, context, mintSessionId);
   const appHtml = options.appHtml ?? {};
   const toolMetaByName = new Map();
+  const captureArguments = options.privacy?.captureArguments === true;
+  const capturedFields = (args, outcome, result) => {
+    if (!captureArguments) return {};
+    const tokens = safeArgumentTokens(args);
+    const preview = argumentPreview(args);
+    const reply = outcome === "success" ? resultText(result) : "";
+    return {
+      tokens,
+      summary: summarizeArguments(tokens),
+      ...(preview ? { argumentPreview: preview } : {}),
+      ...(reply ? { resultText: reply } : {})
+    };
+  };
   if (typeof server.registerTool === "function") {
     const registerTool = server.registerTool.bind(server);
     server.registerTool = (name, config, handler) => {
@@ -674,9 +687,6 @@ SupportBridge.install = function install(server, options) {
         if (fields.mcpIntent) {
           const identity = await callerIdentity(extra);
           const meta = toolMetaByName.get(toolName) ?? {};
-          const tokens = safeArgumentTokens(split.args);
-          const preview = argumentPreview(split.args);
-          const reply = outcome === "success" ? resultText(result) : "";
           await reportActivity(baseUrl, options.apiKey, {
             source: options.source ?? "mcp",
             sdkVersion: SDK_VERSION,
@@ -684,11 +694,8 @@ SupportBridge.install = function install(server, options) {
             toolName,
             outcome,
             durationMs: Date.now() - started,
-            tokens,
-            summary: summarizeArguments(tokens),
+            ...capturedFields(split.args, outcome, result),
             ...fields,
-            ...(preview ? { argumentPreview: preview } : {}),
-            ...(reply ? { resultText: reply } : {}),
             ...(meta.title ? { title: meta.title } : {}),
             ...(meta.description ? { description: meta.description } : {}),
             ...(errorText ? { error: errorText } : {})
@@ -873,9 +880,6 @@ SupportBridge.install = function install(server, options) {
         }
         const identity = await callerIdentity(extra);
         const meta = toolMetaByName.get(String(toolName)) ?? {};
-        const tokens = safeArgumentTokens(args);
-        const preview = argumentPreview(args);
-        const reply = outcome === "success" ? resultText(result) : "";
         const activity = reportActivity(baseUrl, options.apiKey, {
           source: options.source ?? "mcp",
           sdkVersion: SDK_VERSION,
@@ -883,11 +887,8 @@ SupportBridge.install = function install(server, options) {
           toolName,
           outcome,
           durationMs: Date.now() - started,
-          tokens,
-          summary: summarizeArguments(tokens),
+          ...capturedFields(args, outcome, result),
           ...intentFieldsFrom(mcpContextStore.getStore()),
-          ...(preview ? { argumentPreview: preview } : {}),
-          ...(reply ? { resultText: reply } : {}),
           ...(meta.title ? { title: meta.title } : {}),
           ...(meta.description ? { description: meta.description } : {}),
           ...(errorText ? { error: errorText } : {})
@@ -1980,7 +1981,7 @@ ${chatPanelStyles()}
       </div>
       <p id="va-helper"></p>
       <div id="va-actions" class="va-actions">
-        <button id="va-accept" type="button"><span id="va-accept-label">Speak Live</span></button>
+        <button id="va-accept" type="button"><span id="va-accept-label">Speak to a Live Person</span></button>
         <button id="va-assistant" type="button" hidden>Speak to Assistant</button>
         <button id="va-decline" type="button">Decline</button>
       </div>
@@ -2252,11 +2253,11 @@ function renderVendor(payload){
       vaRepHeading.textContent=named;
       setPill("live","Online");
       vaRepSub.textContent="Representative at "+(vendorName||"the vendor")+", can help with "+topic;
-      const given=payload.acceptLabel&&payload.acceptLabel!=="Speak Live"?payload.acceptLabel:"";
+      const given=payload.acceptLabel&&payload.acceptLabel!=="Speak to a Live Person"?payload.acceptLabel:"";
       vaAcceptLabel.textContent=given||("Speak with "+named);
     }else{
       setPill("","");
-      vaAcceptLabel.textContent=payload.acceptLabel||"Speak Live";
+      vaAcceptLabel.textContent=payload.acceptLabel||"Speak to a Live Person";
     }
   }else if(mode==="agent"){
     vaInitials.textContent=payload.vendor_initials||"A";

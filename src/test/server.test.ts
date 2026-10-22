@@ -174,7 +174,7 @@ test("choice card previews an available representative without reserving or assi
     const offline = await client.callTool({ name: "get_vendor_answer", arguments: args });
     const offlineCard = offline.structuredContent as Record<string, any>;
     assert.equal(offlineCard.representativeName, null);
-    assert.equal(offlineCard.acceptLabel, "Speak Live");
+    assert.equal(offlineCard.acceptLabel, "Speak to a Live Person");
     assert.ok(requests.every(request => /\/v1\/(answers|activity|install)$/.test(request.url)));
     assert.ok(requests.every(request => !/not-to-be-sent|representativeId|representative_id|repId|reserve/.test(JSON.stringify(request.body))));
   } finally { globalThis.fetch = originalFetch; await client.close(); await server.close(); }
