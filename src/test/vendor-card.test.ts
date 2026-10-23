@@ -13,7 +13,7 @@ test("choice card shows a named online representative and clears them for the as
     return end < 0 ? rest : rest.slice(0, end + 1);
   }
   const node = () => ({ hidden: true, textContent: "", value: "", scrollHeight: 0, clientHeight: 0, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, focus() {} });
-  const sandbox: any = { document: {}, pendingAction: false, acceptTool: "", declineTool: "", offerId: "", renderFacts() {}, fitFrame() {}, setBusy() {}, requestAnimationFrame(callback: () => void) { callback(); }, setPill(_mode: string, text: string) { sandbox.pill = text; } };
+  const sandbox: any = { document: { body: node() }, pendingAction: false, acceptTool: "", declineTool: "", offerId: "", renderFacts() {}, fitFrame() {}, setBusy() {}, requestAnimationFrame(callback: () => void) { callback(); }, setPill(_mode: string, text: string) { sandbox.pill = text; } };
   for (const match of source.matchAll(/(?:const|let) (\w+)=document.getElementById/g)) sandbox[match[1]] = node();
   const context = createContext(sandbox);
   runInContext(extract("renderVendor") + "\n" + extract("openAgentChat"), context);

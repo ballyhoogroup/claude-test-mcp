@@ -230,7 +230,7 @@ export function activityFingerprint(row) {
     ? row.tokens
     : {};
   const parts = Object.keys(tokens).sort().map(key => `${key}=${String(tokens[key])}`);
-  return `${toolName}|${parts.join("&")}|${eventGist(row)}|${String(row?.mcpIntent || "")}`;
+  return `${toolName}|${String(row?.toolAction || "")}|${parts.join("&")}|${eventGist(row)}|${String(row?.mcpIntent || "")}`;
 }
 
 function errorClass(row) {
@@ -320,6 +320,7 @@ export function collapseActivityBeats(activity) {
     }
     beats.push({
       toolName: row.toolName,
+      toolAction: row.toolAction || undefined,
       title: row.title || undefined,
       description: row.description || undefined,
       outcome: row.outcome,
@@ -636,6 +637,7 @@ export function publicActivityEvent(event) {
     : {};
   const row = {
     toolName: event.toolName,
+    ...(event.toolAction ? { toolAction: event.toolAction } : {}),
     outcome: event.outcome,
     durationMs: event.durationMs ?? 0,
     at: event.at,

@@ -111,7 +111,7 @@ function frameSize(resourceUri) {
 
 const SECURITY_CUES = intentById("security").words.join(", ");
 
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. send_message requires client_message_id, a unique id for that message, reused on a retry. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
@@ -120,7 +120,7 @@ export function vendorAnswerDescription(vendorName) {
   return `Use this whenever the user asks about ${vendor}'s pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing. Returns ${vendor}'s current answer. Call it before answering such questions from general knowledge. Calling it contacts nobody. Answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call.`;
 }
 export const CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat only after the customer chooses a live person. Pass the offer id. With no offer id, accepts the pending manual offer for this session.";
-export const DECLINE_ASSISTANCE_DESCRIPTION = "The follow-up for every choice that is not opening a live chat. Actions: decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. The vendor is contacted only after confirm_assistance or file_note succeeds.";
+export const DECLINE_ASSISTANCE_DESCRIPTION = "The follow-up for every choice that is not opening a live chat. Actions: decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. send_message requires client_message_id, a unique id for that message, reused on a retry. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. The vendor is contacted only after confirm_assistance or file_note succeeds.";
 
 /** Copy a vendor tool without rewriting its description. Result interception stays on the installed wrapper. */
 export function wrapTool(tool, options = {}) {
@@ -419,8 +419,8 @@ function vendorAnswerResult(payload) {
     const named = fields.rep?.name || "";
     const liveLabel = named ? `Speak with ${named}` : "Speak to a Live Person";
     const suggestedMessage = named
-      ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose. Speak to a Live Person calls confirm_assistance with offer id ${offer.id}. Speak to Assistant calls decline_assistance with action assistant. Decline calls decline_assistance with action decline.`
-      : `You can ask for a live person at ${vendorLabel} (if nobody is free, you can leave a note), talk to the assistant, or decline. Nothing is sent until you choose. Speak to a Live Person calls confirm_assistance with offer id ${offer.id}. Speak to Assistant calls decline_assistance with action assistant. Decline calls decline_assistance with action decline.`;
+      ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose.`
+      : `You can ask for a live person at ${vendorLabel} (if nobody is free, you can leave a note), talk to the assistant, or decline. Nothing is sent until you choose.`;
     return {
       content: [
         { type: "text", text: fields.direct_answer },
@@ -1127,7 +1127,11 @@ async function confirmAssistance(baseUrl, apiKey, identity, offerId, note, conse
 
 async function readCustomerOffer(baseUrl, apiKey, identity, offerId) {
   if (!offerId) {
-    return { structuredContent: { status: "offer_id_required", chatStarted: false } };
+    return {
+      isError: true,
+      content: [{ type: "text", text: "An offer id is required." }],
+      structuredContent: { status: "offer_id_required", chatStarted: false }
+    };
   }
   const result = await serviceFetch(
     baseUrl,
@@ -1155,7 +1159,8 @@ async function declineOffer(baseUrl, apiKey, identity, offerId) {
         type: "text",
         text: "An offer id is required to decline assistance. Pass offerId or offer_id from the assistance card or invitation."
       }],
-      structuredContent: { status: "offer_id_required", chatStarted: false }
+      structuredContent: { status: "offer_id_required", chatStarted: false },
+      isError: true
     };
   }
   const result = await serviceFetch(baseUrl, apiKey, `/v1/offers/${encodeURIComponent(offerId)}/decline`, {
@@ -1180,12 +1185,14 @@ async function fileEscalation(baseUrl, apiKey, identity, escalationId, note, con
   if (!escalationId) {
     return {
       content: [{ type: "text", text: "An escalation offer id is required to send the note." }],
-      structuredContent: { status: "offer_id_required", chatStarted: false }
+      structuredContent: { status: "offer_id_required", chatStarted: false },
+      isError: true
     };
   }
+  const nonce = typeof consentNonce === "string" ? consentNonce.trim() : "";
   const result = await serviceFetch(baseUrl, apiKey, `/v1/escalations/${encodeURIComponent(escalationId)}/file`, {
     method: "POST",
-    body: { ...identity, ...consentBody(consentNonce), ...(note ? { note: String(note).slice(0, 2000) } : {}) }
+    body: { ...identity, ...consentBody(nonce), ...(note ? { note: String(note).slice(0, 2000) } : {}) }
   });
   if (result == null) return serviceUnreachableResult();
   if (result?.escalation?.status === "pending") {
@@ -1198,9 +1205,11 @@ async function fileEscalation(baseUrl, apiKey, identity, escalationId, note, con
   return {
     content: [{
       type: "text",
-      text: status === "escalation_expired"
-        ? "That note offer has expired. No note was sent."
-        : "The note could not be sent."
+      text: status === "consent_required" && !nonce
+        ? "A consent nonce from the card is required."
+        : status === "escalation_expired"
+          ? "That note offer has expired. No note was sent."
+          : "The note could not be sent."
     }],
     structuredContent: { status, chatStarted: false },
     isError: true
@@ -1211,7 +1220,8 @@ async function declineEscalation(baseUrl, apiKey, identity, escalationId) {
   if (!escalationId) {
     return {
       content: [{ type: "text", text: "An escalation offer id is required to decline the note." }],
-      structuredContent: { status: "offer_id_required", chatStarted: false }
+      structuredContent: { status: "offer_id_required", chatStarted: false },
+      isError: true
     };
   }
   const result = await serviceFetch(baseUrl, apiKey, `/v1/escalations/${encodeURIComponent(escalationId)}/decline`, {
@@ -1289,7 +1299,7 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
   const messages = result.messages.map(visibleMessage);
   const cursor = typeof result.cursor === "number" ? result.cursor : (messages.at(-1)?.cursor ?? after);
   return {
-    content: [{ type: "text", text: transcript({ messages }) }],
+    content: [{ type: "text", text: messageListStatus(messages) }],
     structuredContent: {
       messages,
       cursor,
@@ -1358,7 +1368,15 @@ function conversationArg(args) {
 
 function clientMessageArg(args) {
   const value = args?.client_message_id ?? args?.clientMessageId;
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function clientMessageRequired() {
+  return {
+    isError: true,
+    content: [{ type: "text", text: "Pass client_message_id, a unique id for this message, and reuse that same id on a retry." }],
+    structuredContent: { status: "client_message_required", chatStarted: false }
+  };
 }
 
 function conversationRequired(conversationId) {
@@ -1390,6 +1408,14 @@ async function replyToVendorAgent(baseUrl, apiKey, identity, offerId, text) {
 }
 
 async function declineAssistance(baseUrl, apiKey, identity, args) {
+  const rawAction = args?.action == null ? "" : String(args.action).trim();
+  if (!rawAction && (textArg(args) || noteArg(args) || conversationArg(args))) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: "Pass an action. Use assistant or file_note with an offer id, or get_messages, send_message, or end with a conversation id. Nothing was declined." }],
+      structuredContent: { status: "action_required", chatStarted: false }
+    };
+  }
   const action = normalizedAction(args?.action);
   if (!action) {
     return {
@@ -1413,10 +1439,12 @@ async function declineAssistance(baseUrl, apiKey, identity, args) {
     const conversationId = conversationArg(args);
     const missing = conversationRequired(conversationId);
     if (missing) return missing;
+    const clientMessageId = clientMessageArg(args);
+    if (!clientMessageId) return clientMessageRequired();
     return sendCustomerMessage(baseUrl, apiKey, identity, {
       conversation_id: conversationId,
       text: textArg(args),
-      client_message_id: clientMessageArg(args)
+      client_message_id: clientMessageId
     });
   }
   if (action === "end") {
@@ -1430,10 +1458,10 @@ async function declineAssistance(baseUrl, apiKey, identity, args) {
   return declineOffer(baseUrl, apiKey, identity, offerId);
 }
 
-function transcript(result) {
-  if (!result?.messages) return "No conversation is available.";
-  if (!result.messages.length) return "No new messages.";
-  return result.messages.map(message => `${message.sender}: ${message.text}`).join("\n");
+function messageListStatus(messages) {
+  const count = Array.isArray(messages) ? messages.length : 0;
+  if (!count) return "No new messages.";
+  return count === 1 ? "1 new message." : `${count} new messages.`;
 }
 
 const SERVICE_TIMEOUT_MS = 5_000;
@@ -2258,6 +2286,7 @@ function setPill(mode,text){
   if(text) vaPill.classList.add(mode);
 }
 function renderVendor(payload){
+  document.body.classList.remove("sb-chat-mode");
   offerRootEl.hidden=true;
   vaCard.hidden=false;
   const rep=payload.rep&&typeof payload.rep==="object"?payload.rep:{};
