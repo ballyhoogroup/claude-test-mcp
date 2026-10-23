@@ -133,6 +133,15 @@ export function expandLegacyAnswers(incoming) {
   return source;
 }
 
+/** A topic argument that is already a catalog id or a retired alias. Loose wording returns null. */
+export function exactStandardIntent(raw) {
+  const normalized = String(raw ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!normalized) return null;
+  if (ASSISTANCE_INTENT_IDS.includes(normalized)) return normalized;
+  if (INTENT_ALIASES[normalized]) return INTENT_ALIASES[normalized];
+  return null;
+}
+
 /** Known topic id, or null when the phrase does not match the catalog. */
 export function matchAssistanceIntent(rawIntent, haystack = "") {
   const normalized = String(rawIntent ?? "").toLowerCase().replace(/[\s-]+/g, "_");

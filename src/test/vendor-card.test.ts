@@ -13,11 +13,19 @@ test("choice card shows a named online representative and clears them for the as
     return end < 0 ? rest : rest.slice(0, end + 1);
   }
   const node = () => ({ hidden: true, textContent: "", value: "", scrollHeight: 0, clientHeight: 0, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {}, focus() {} });
-  const sandbox: any = { document: { body: node() }, pendingAction: false, acceptTool: "", declineTool: "", offerId: "", renderFacts() {}, fitFrame() {}, setBusy() {}, requestAnimationFrame(callback: () => void) { callback(); }, setPill(_mode: string, text: string) { sandbox.pill = text; } };
+  const bodyClasses = new Set<string>(["sb-chat-mode"]);
+  const body = { ...node(), classList: {
+    add(...names: string[]) { names.forEach(name => bodyClasses.add(name)); },
+    remove(...names: string[]) { names.forEach(name => bodyClasses.delete(name)); },
+    contains(name: string) { return bodyClasses.has(name); },
+    toggle(name: string) { if (bodyClasses.has(name)) { bodyClasses.delete(name); return false; } bodyClasses.add(name); return true; },
+  } };
+  const sandbox: any = { document: { body }, pendingAction: false, acceptTool: "", declineTool: "", offerId: "", renderFacts() {}, fitFrame() {}, setBusy() {}, requestAnimationFrame(callback: () => void) { callback(); }, setPill(_mode: string, text: string) { sandbox.pill = text; } };
   for (const match of source.matchAll(/(?:const|let) (\w+)=document.getElementById/g)) sandbox[match[1]] = node();
   const context = createContext(sandbox);
   runInContext(extract("renderVendor") + "\n" + extract("openAgentChat"), context);
   sandbox.renderVendor({ offer_id: "choice-offer", kind: "choice", state: "choice", vendor_name: "Pitch Fork", rep: { name: "Sarah Teller" }, representativeName: "Sarah Teller", acceptLabel: "Speak with Sarah Teller", topic: "pricing", direct_answer: "Company answer" });
+  assert.equal(sandbox.document.body.classList.contains("sb-chat-mode"), false);
   assert.equal(sandbox.vaAcceptLabel.textContent, "Speak with Sarah Teller");
   assert.equal(sandbox.vaRepHeading.textContent, "Sarah Teller");
   assert.equal(sandbox.pill, "Online");
