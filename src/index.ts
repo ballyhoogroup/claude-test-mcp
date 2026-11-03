@@ -41,7 +41,7 @@ app.get("/", (_req, res) => {
     companyAccessDefaultLimit: 10,
     posthogMcpVersion: "0.23.0",
     posthogAnalyticsEnabled: Boolean(posthogClient),
-    supportBridgeSdkVersion: "SDKtoolchange-sha256-50c61add9b42c7f9b4e2967a51973b4bb8d2e9975a9c566261432832560465b1",
+    supportBridgeSdkVersion: "6b68bb6dbff94565c1dc6c273ea90ee98b18b807",
     supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)
       && process.env.SUPPORTBRIDGE_URL === "https://app.getwith.in"
       && process.env.SUPPORTBRIDGE_SOURCE === "pitch-fork-mcp",

@@ -95,7 +95,7 @@ const DECLINE_FOLLOW_UP_INPUT = z.object({
   action: looseField("decline, assistant, file_note, get_messages, send_message, end, or get_offer. Omitted means decline.")
 }).passthrough();
 
-export const SDK_VERSION = "0.1.1";
+export const SDK_VERSION = "0.2.0";
 export const CHAT_RESOURCE = "ui://supportbridge/chat";
 export const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 export const APP_MIME = "text/html;profile=mcp-app";
@@ -111,7 +111,7 @@ function frameSize(resourceUri) {
 
 const SECURITY_CUES = intentById("security").words.join(", ");
 
-export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Also call get_vendor_answer when the user asks something specific to this company that those topics do not cover, and pass a short phrase in the customer's own words as the topic. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. send_message requires client_message_id, a unique id for that message, reused on a retry. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
+export const SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Also call get_vendor_answer when the user asks something specific to this company that those topics do not cover, and pass a short phrase in the customer's own words as the topic. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. send_message requires client_message_id, a unique id for that message, reused on a retry. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. When a vendor answer begins with "The closest information", keep that sentence and do not present the reply as a complete answer. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user.`;
 export const DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 export const RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 
@@ -191,12 +191,13 @@ function topicPhrase(intent, label) {
 
 export function liveOfferCopy(offer) {
   const topic = topicPhrase(offer.intent, offer.intentLabel);
+  const titleTopic = offer?.match === "low" ? "this" : topic;
   const name = offer.representativeName || "A representative";
   const vendor = offer.vendorName || "the vendor";
   const summary = String(offer.issueSummary || "").trim();
   return {
     cardEyebrow: `${vendor} support available`,
-    cardTitle: `${name} can help with ${topic}.`,
+    cardTitle: `${name} can help with ${titleTopic}.`,
     cardNote: consentNote(summary, "Chat with support"),
     acceptLabel: "Chat with support",
     declineLabel: "Not now",
@@ -240,11 +241,12 @@ export function assistanceDraft(note) {
 
 export function asyncEscalationCopy(note) {
   const topic = topicPhrase(note.intent, note.intentLabel);
+  const titleTopic = note?.match === "low" ? "this" : topic;
   const vendor = note.vendorName || "the vendor";
   return {
     cardEyebrow: "Human follow-up",
     cardEyebrowTone: "neutral",
-    cardTitle: `Ask ${vendor} about ${topic}`,
+    cardTitle: `Ask ${vendor} about ${titleTopic}`,
     cardNote: "Nothing is sent until you confirm.",
     draftNote: assistanceDraft(note),
     acceptLabel: "Send note",
@@ -328,6 +330,22 @@ function repCard(name, role, available) {
   };
 }
 
+function answerConfidence(payload) {
+  return payload?.match === "low" || payload?.match === "confident" ? payload.match : "";
+}
+
+function embeddingCardTitle(payload, { name, vendor, topic }) {
+  const confidence = answerConfidence(payload);
+  if (!confidence) return "";
+  if (name) return `${name} can help with ${confidence === "low" ? "this" : topic}.`;
+  return `Ask ${vendor || "the vendor"} about ${confidence === "low" ? "this" : topic}`;
+}
+
+function hostAnswerText(payload, answer, fallback) {
+  if (payload?.match === "low") return String(answer?.text || "");
+  return fallback;
+}
+
 function vendorCardFields(answer, subject) {
   const vendorName = subject.vendorName || "";
   const intentLabel = subject.intentLabel || "";
@@ -365,7 +383,7 @@ function nextCall({ tool, action, offerId, label, suggestedMessage, conversation
   };
 }
 
-function vendorAnswerResult(payload) {
+export function vendorAnswerResult(payload) {
   const answer = payload.answer && typeof payload.answer === "object" ? payload.answer : { text: String(payload.answer ?? "") };
   if (payload.conversation?.id) {
     const conversation = payload.conversation;
@@ -373,7 +391,7 @@ function vendorAnswerResult(payload) {
     const name = conversation.representativeName || "support";
     return {
       content: [
-        { type: "text", text: spoken.direct_answer || answer.text || "" },
+        { type: "text", text: hostAnswerText(payload, answer, spoken.direct_answer || answer.text || "") },
         { type: "text", text: `You already have a live chat with ${name}. Opening that conversation.` }
       ],
       structuredContent: {
@@ -389,6 +407,7 @@ function vendorAnswerResult(payload) {
         vendorName: conversation.vendorName || "",
         offerId: conversation.offerId || "",
         offer_id: conversation.offerId || "",
+        ...(answerConfidence(payload) ? { match: answerConfidence(payload) } : {}),
         next: [nextCall({
           tool: "decline_assistance",
           action: "get_messages",
@@ -418,17 +437,20 @@ function vendorAnswerResult(payload) {
     });
     const named = fields.rep?.name || "";
     const liveLabel = named ? `Speak with ${named}` : "Speak to a Live Person";
+    const cardTitle = embeddingCardTitle(payload, { name: named, vendor: vendorLabel, topic });
     const suggestedMessage = named
       ? `You can speak with ${named}, talk to the assistant, or decline. Nothing is sent until you choose.`
       : `You can ask for a live person at ${vendorLabel} (if nobody is free, you can leave a note), talk to the assistant, or decline. Nothing is sent until you choose.`;
     return {
       content: [
-        { type: "text", text: fields.direct_answer },
+        { type: "text", text: hostAnswerText(payload, answer, fields.direct_answer) },
         { type: "text", text: suggestedMessage }
       ],
       structuredContent: {
         answer,
         ...fields,
+        ...(cardTitle ? { cardTitle } : {}),
+        ...(answerConfidence(payload) ? { match: answerConfidence(payload) } : {}),
         kind: "choice",
         state: "choice",
         assistance: { kind: "choice", topic, ...(fields.rep ? { representative: fields.rep } : {}) },
@@ -463,7 +485,7 @@ function vendorAnswerResult(payload) {
   }
   if (payload.escalation && !payload.offer) {
     const note = payload.escalation;
-    const copy = asyncEscalationCopy(note);
+    const copy = asyncEscalationCopy({ ...note, match: payload.match === "low" ? "low" : note.match });
     const topic = topicPhrase(note.intent, note.intentLabel);
     const fields = vendorCardFields(answer, {
       vendorName: note.vendorName,
@@ -483,12 +505,13 @@ function vendorAnswerResult(payload) {
     copy.acceptLabel = "Send note";
     return {
       content: [
-        { type: "text", text: fields.direct_answer },
+        { type: "text", text: hostAnswerText(payload, answer, fields.direct_answer) },
         { type: "text", text: copy.suggestedMessage }
       ],
       structuredContent: {
         answer,
         ...fields,
+        ...(answerConfidence(payload) ? { match: answerConfidence(payload) } : {}),
         kind: "escalation",
         state: "async",
         team: topic,
@@ -566,7 +589,7 @@ function vendorAnswerResult(payload) {
   }
   if (payload.offer) {
     const offer = payload.offer;
-    const copy = liveOfferCopy(offer);
+    const copy = liveOfferCopy({ ...offer, match: payload.match === "low" ? "low" : offer.match });
     const firstName = String(offer.representativeName || "").trim().split(/\s+/)[0];
     const topic = topicPhrase(offer.intent, offer.intentLabel);
     copy.acceptLabel = firstName ? `Chat with ${firstName}` : "Chat with support";
@@ -588,12 +611,13 @@ function vendorAnswerResult(payload) {
     assistance.topic = topic;
     return {
       content: [
-        { type: "text", text: fields.direct_answer },
+        { type: "text", text: hostAnswerText(payload, answer, fields.direct_answer) },
         { type: "text", text: copy.suggestedMessage }
       ],
       structuredContent: {
         answer,
         ...fields,
+        ...(answerConfidence(payload) ? { match: answerConfidence(payload) } : {}),
         kind: "live",
         state: "live",
         ...(firstName ? { first_name: firstName } : {}),
@@ -628,10 +652,14 @@ function vendorAnswerResult(payload) {
       }, payload)
     };
   }
-  const spoken = splitVendorAnswer(answer.text).direct_answer || answer.text;
+  const spoken = hostAnswerText(payload, answer, splitVendorAnswer(answer.text).direct_answer || answer.text);
   return {
     content: [{ type: "text", text: spoken }],
-    structuredContent: { answer, full_answer: answer.text }
+    structuredContent: {
+      answer,
+      full_answer: answer.text,
+      ...(answerConfidence(payload) ? { match: answerConfidence(payload) } : {})
+    }
   };
 }
 
@@ -680,13 +708,17 @@ SupportBridge.install = function install(server, options) {
     body: { source: options.source ?? "mcp", sdkVersion: SDK_VERSION }
   });
   const vendorLabel = String(options.vendorName ?? "").trim() || "this vendor";
-  const identify = options.identify ?? identifyFromContext;
+  const readIdentity = context => identifyFromContext(context, {
+    identityClaimNamespace: options.identityClaimNamespace,
+    claimMap: options.claimMap
+  });
+  const identify = options.identify ?? readIdentity;
   let mintedSessionId = "";
   const mintSessionId = () => {
     if (!mintedSessionId) mintedSessionId = `mcp_${randomUUID()}`;
     return mintedSessionId;
   };
-  const callerIdentity = context => identityOf(identify, context, mintSessionId);
+  const callerIdentity = context => identityOf(identify, context, mintSessionId, readIdentity);
   const appHtml = options.appHtml ?? {};
   const toolMetaByName = new Map();
   const captureArguments = options.privacy?.captureArguments === true;
@@ -958,28 +990,140 @@ function resourceMeta(resourceUri) {
 const PLACEHOLDER_IDS = new Set(["anonymous", "customer-from-your-auth", "session-from-your-auth"]);
 const PLACEHOLDER_NAMES = new Set(["customer name"]);
 
-/** Read the signed-in person from an MCP tool context. A missing name stays unset. */
-export function identifyFromContext(context) {
-  const extra = context && typeof context === "object" ? context : {};
-  const authExtra = extra.authInfo?.extra && typeof extra.authInfo.extra === "object" ? extra.authInfo.extra : {};
-  const meta = extra._meta && typeof extra._meta === "object" ? extra._meta : {};
-  const metaUser = meta["openai/user"] && typeof meta["openai/user"] === "object" ? meta["openai/user"] : {};
-  const subject = firstText([authExtra.sub, authExtra.user_id, authExtra.userId, metaUser.id, meta["openai/subject"]]);
+/** Read the signed-in person from an MCP tool context. A missing name stays unset.
+ * Identity comes only from claims the host already placed on authInfo, plus
+ * _meta["openai/user"] and sessionId. Tool arguments, the bearer token, and
+ * userinfo are not read.
+ */
+export function identifyFromContext(context, options = {}) {
+  const root = plainObject(context) ? context : {};
+  const authInfo = plainObject(root.authInfo) ? root.authInfo : {};
+  const sources = [authInfo.extra, authInfo.payload].filter(plainObject);
+  const meta = plainObject(root._meta) ? root._meta : {};
+  const metaUser = plainObject(meta["openai/user"]) ? meta["openai/user"] : {};
+  const settings = plainObject(options) ? options : {};
+  const claimMap = plainObject(settings.claimMap) ? settings.claimMap : {};
+  const configured = namespacesFrom(settings.identityClaimNamespace);
+  const namespaces = configured.length ? configured : detectNamespace(sources);
+  const subject = firstText([
+    readBare(sources, "sub"),
+    readBare(sources, "user_id"),
+    readBare(sources, "userId"),
+    textAt(metaUser, "id"),
+    textAt(meta, "openai/subject")
+  ]);
+  const emailClaim = readClaim(sources, "email", namespaces, claimMap);
+  const verifiedEmail = emailVerifiedOn(emailClaim.source, namespaces, claimMap)
+    && emailClaim.text.toLowerCase().includes("@")
+    ? emailClaim.text.toLowerCase()
+    : "";
   return {
-    userId: firstText([verifiedEmail(authExtra), subject]),
+    userId: firstText([verifiedEmail, subject]),
     authUserId: subject,
-    sessionId: firstText([extra.sessionId, meta.sessionId]),
-    displayName: firstText([authExtra.name, authExtra.preferred_username, metaUser.name])
+    sessionId: firstText([textAt(root, "sessionId"), textAt(meta, "sessionId")]),
+    displayName: firstText([
+      personName(sources, namespaces, claimMap),
+      textAt(metaUser, "name")
+    ])
   };
 }
 
-function verifiedEmail(authExtra) {
-  const verified = authExtra.emailVerified === true
-    || authExtra.email_verified === true
-    || authExtra.email_verified === "true";
-  if (!verified) return "";
-  const email = firstText([authExtra.email]).toLowerCase();
-  return email.includes("@") ? email : "";
+function plainObject(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function namespacesFrom(value) {
+  const entries = Array.isArray(value) ? value : [value];
+  const namespaces = [];
+  for (const entry of entries) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    namespaces.push(trimmed.endsWith("/") ? trimmed : `${trimmed}/`);
+  }
+  return namespaces;
+}
+
+function detectNamespace(sources) {
+  const matches = [];
+  for (const source of sources) {
+    for (const key of Object.keys(source)) {
+      if (key.endsWith("/email")) matches.push({ source, key });
+    }
+  }
+  if (matches.length !== 1) return [];
+  const email = textAt(matches[0].source, matches[0].key);
+  if (!email.includes("@")) return [];
+  return [matches[0].key.slice(0, -"email".length)];
+}
+
+function keysFor(field, namespaces, claimMap) {
+  const keys = [];
+  const mapped = typeof claimMap[field] === "string" ? claimMap[field].trim() : "";
+  if (mapped) keys.push(mapped);
+  for (const namespace of namespaces) keys.push(`${namespace}${field}`);
+  keys.push(field);
+  return keys;
+}
+
+function textAt(source, key) {
+  if (!source || !Object.hasOwn(source, key)) return "";
+  const value = source[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function affirmedAt(source, key) {
+  if (!source || !Object.hasOwn(source, key)) return false;
+  const value = source[key];
+  return value === true || value === "true";
+}
+
+function firstClaimText(source, keys) {
+  for (const key of keys) {
+    const text = textAt(source, key);
+    if (text) return text;
+  }
+  return "";
+}
+
+function readClaim(sources, field, namespaces, claimMap) {
+  const keys = keysFor(field, namespaces, claimMap);
+  for (const source of sources) {
+    const text = firstClaimText(source, keys);
+    if (text) return { text, source };
+  }
+  return { text: "", source: null };
+}
+
+function personName(sources, namespaces, claimMap) {
+  const named = readClaim(sources, "name", namespaces, claimMap).text;
+  if (named) return named;
+  const given = readClaim(sources, "given_name", namespaces, claimMap).text;
+  const family = readClaim(sources, "family_name", namespaces, claimMap).text;
+  const combined = [given, family].filter(Boolean).join(" ");
+  if (combined) return combined;
+  const nickname = readClaim(sources, "nickname", namespaces, claimMap).text;
+  if (nickname) return nickname;
+  return readClaim(sources, "preferred_username", namespaces, claimMap).text;
+}
+
+function readBare(sources, field) {
+  for (const source of sources) {
+    const text = textAt(source, field);
+    if (text) return text;
+  }
+  return "";
+}
+
+function emailVerifiedOn(source, namespaces, claimMap) {
+  if (!source) return false;
+  const keys = [
+    ...keysFor("emailVerified", namespaces, claimMap),
+    ...keysFor("email_verified", namespaces, claimMap)
+  ];
+  return keys.some(key => affirmedAt(source, key));
 }
 
 function firstText(values) {
@@ -1017,9 +1161,9 @@ function usableIdentity(value, placeholders) {
   return text;
 }
 
-async function identityOf(identify, context, mintSessionId) {
+async function identityOf(identify, context, mintSessionId, readIdentity = identifyFromContext) {
   const provided = await identify(context ?? {}) ?? {};
-  const fromContext = identify === identifyFromContext ? {} : identifyFromContext(context);
+  const fromContext = identify === readIdentity || identify === identifyFromContext ? {} : readIdentity(context);
   const displayName = usableIdentity(provided.displayName, PLACEHOLDER_NAMES) || fromContext.displayName;
   const authUserId = usableIdentity(provided.authUserId, PLACEHOLDER_IDS) || usableIdentity(fromContext.authUserId, PLACEHOLDER_IDS);
   const customerUserId = usableIdentity(provided.userId ?? provided.customerUserId, PLACEHOLDER_IDS) || usableIdentity(fromContext.userId, PLACEHOLDER_IDS);
@@ -1068,7 +1212,8 @@ async function acceptOffer(baseUrl, apiKey, identity, offerId, note, consentNonc
     return vendorAnswerResult({
       answer: { text: result.escalation.answer || result.offer?.answer || "" },
       escalation: result.escalation,
-      consentNonce: result.consentNonce
+      consentNonce: result.consentNonce,
+      ...(result.offer?.match === "low" || result.offer?.match === "confident" ? { match: result.offer.match } : {})
     });
   }
   if (!result?.conversation) {
@@ -2341,9 +2486,9 @@ function renderVendor(payload){
       vaDot.hidden=false;
       vaAvatar.classList.remove("agent");
       vaAvatar.classList.add("live");
-      vaRepHeading.textContent=named;
+      vaRepHeading.textContent=payload.match==="low"&&payload.cardTitle?payload.cardTitle:named;
       setPill("live","Online");
-      vaRepSub.textContent="Representative at "+(vendorName||"the vendor")+", can help with "+topic;
+      vaRepSub.textContent="Representative at "+(vendorName||"the vendor")+", can help with "+(payload.match==="low"?"this":topic);
       const given=payload.acceptLabel&&payload.acceptLabel!=="Speak to a Live Person"?payload.acceptLabel:"";
       vaAcceptLabel.textContent=given||("Speak with "+named);
     }else{
@@ -2370,6 +2515,8 @@ function renderVendor(payload){
     if(document.activeElement!==vaNoteText) vaNoteText.value=payload.user_question||"";
     vaHelper.textContent=(vendorName||"The vendor")+" sees only this note and your name. Nothing is sent until you click.";
     vaAcceptLabel.textContent="Send note";
+    vaStatus.classList.remove("error");
+    vaStatus.textContent="";
   }else{
     vaInitials.textContent=rep.initials||payload.vendor_initials||"";
     vaDot.hidden=false;
@@ -2713,20 +2860,35 @@ function onToolResult(fn){
   if(pendingResult){const result=pendingResult;pendingResult=null;fn(result);}
 }
 let consentNonce="";
+function isBag(value){
+  return !!value&&typeof value==="object"&&!Array.isArray(value);
+}
 function readConsentBag(bag){
-  if(!bag||typeof bag!=="object")return "";
+  if(!isBag(bag))return "";
   const nonce=bag["supportbridge/consentNonce"];
   return typeof nonce==="string"?nonce.trim():"";
 }
+function consentFrom(source, seen){
+  if(!isBag(source)||seen.has(source))return "";
+  seen.add(source);
+  const direct=readConsentBag(source);
+  if(direct)return direct;
+  const keys=["_meta","meta","toolResponseMetadata","mcp_tool_result","call_tool_result","result"];
+  for(let i=0;i<keys.length;i++){
+    const found=consentFrom(source[keys[i]], seen);
+    if(found)return found;
+  }
+  return "";
+}
 function captureConsent(source){
-  const root=source&&typeof source==="object"?source:{};
-  const found=readConsentBag(root)||readConsentBag(root._meta)||readConsentBag(root.meta)||readConsentBag(root.toolResponseMetadata);
+  let found=consentFrom(source, new Set());
+  if(!found){
+    try{
+      const openai=window.openai||{};
+      found=consentFrom(openai.toolResponseMetadata, new Set())||consentFrom(openai._meta, new Set())||consentFrom(openai.toolOutput, new Set());
+    }catch(e){}
+  }
   if(found)consentNonce=found;
-  try{
-    const openai=window.openai||{};
-    const hostNonce=readConsentBag(openai.toolResponseMetadata)||readConsentBag(openai._meta)||readConsentBag(openai.toolOutput&&openai.toolOutput._meta);
-    if(hostNonce)consentNonce=hostNonce;
-  }catch(e){}
 }
 function withConsent(args){
   const next=Object.assign({},args||{});
@@ -2751,11 +2913,19 @@ function flattenAssistance(payload){
     representativeRole: payload.representativeRole||person.role||""
   });
 }
-function payloadFrom(value){
-  if(!value||typeof value!=="object")return null;
+function payloadFrom(value, seen){
+  if(!isBag(value))return null;
+  if(!seen)seen=new Set();
+  if(seen.has(value))return null;
+  seen.add(value);
   const nested=value.structuredContent||value["supportbridge/offer"];
-  const payload=flattenAssistance(nested&&typeof nested==="object"?nested:value);
+  const payload=flattenAssistance(isBag(nested)?nested:value);
   if(payload.offerId||payload.offer_id||payload.escalationOfferId||payload.cardTitle||payload.vendorName||payload.representativeName||payload.chatStarted||payload.conversationId||payload.direct_answer||(payload.conversation&&payload.conversation.id))return payload;
+  const keys=["mcp_tool_result","call_tool_result","result","toolResponseMetadata","toolOutput","toolResponse"];
+  for(let i=0;i<keys.length;i++){
+    const found=payloadFrom(value[keys[i]], seen);
+    if(found)return found;
+  }
   return null;
 }
 function hostOutput(){

@@ -313,6 +313,11 @@ export function collapseActivityBeats(activity) {
       last.durationMs = row.durationMs ?? last.durationMs;
       if (row.error) last.error = row.error;
       if (row.result) last.result = row.result;
+      if ((row.match === "low" || row.match === "confident" || row.match === "similar") && Number.isFinite(row.score)) {
+        last.match = row.match;
+        last.score = row.score;
+        if (row.ruleId) last.ruleId = row.ruleId;
+      }
       const gist = eventGist(row);
       if (gist && last.gist && last.gist !== gist) last.gistMixed = true;
       else if (gist && !last.gistMixed) last.gist = gist;
@@ -333,6 +338,9 @@ export function collapseActivityBeats(activity) {
       gist: eventGist(row),
       gistMixed: false,
       mcpIntent: row.mcpIntent || undefined,
+      ...((row.match === "low" || row.match === "confident" || row.match === "similar") && Number.isFinite(row.score)
+        ? { match: row.match, score: row.score, ...(row.ruleId ? { ruleId: row.ruleId } : {}) }
+        : {}),
       count: 1,
       fingerprint
     });
@@ -650,6 +658,11 @@ export function publicActivityEvent(event) {
   if (event.error) row.error = event.error;
   if (event.mcpIntent) row.mcpIntent = String(event.mcpIntent).slice(0, 300);
   if (event.result) row.result = String(event.result).slice(0, 160);
+  if ((event.match === "low" || event.match === "confident" || event.match === "similar") && Number.isFinite(event.score)) {
+    row.match = event.match;
+    row.score = event.score;
+  }
+  if (event.ruleId) row.ruleId = String(event.ruleId);
   const gist = event.gistMixed ? "" : eventGist(event);
   if (gist) row.gist = gist;
   return row;
