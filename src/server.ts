@@ -69,7 +69,7 @@ export function createServer(posthog = posthogClient): ServerInstallation {
     baseUrl: process.env.SUPPORTBRIDGE_URL,
     source: process.env.SUPPORTBRIDGE_SOURCE,
     vendorName: "Pitch Fork",
-    privacy: { captureArguments: false },
+    privacy: { captureArguments: true },
   });
 
   const registerBusinessTool = (tool: {
