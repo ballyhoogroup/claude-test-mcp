@@ -41,10 +41,10 @@ app.get("/", (_req, res) => {
     companyAccessDefaultLimit: 10,
     posthogMcpVersion: "0.23.0",
     posthogAnalyticsEnabled: Boolean(posthogClient),
-    supportBridgeSdkVersion: "8903955da39d02243c43c09b7c7b8ff17844a9e9",
+    supportBridgeSdkVersion: "0.3.0-aeaa8be60f674cd5278f54e3cd462302740b7610",
     supportBridgeCaptureArguments: false,
     supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)
-      && process.env.SUPPORTBRIDGE_URL === "https://app.getwith.in"
+      && process.env.SUPPORTBRIDGE_URL === "https://staging.getwith.in"
       && process.env.SUPPORTBRIDGE_SOURCE === "pitch-fork-mcp",
   });
 });
@@ -130,7 +130,7 @@ app.post("/mcp", async (req, res) => {
     if (closed) return;
     closed = true;
     await Promise.allSettled([transport.close(), server.close(),
-      typeof support.close === "function" ? support.close() : Promise.resolve(),
+      "close" in support && typeof support.close === "function" ? support.close() : Promise.resolve(),
     ]);
   };
   const transport = new StreamableHTTPServerTransport({

@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { instrument } from "@posthog/mcp";
 import { posthogClient } from "./analytics.js";
-import { SERVER_INSTRUCTIONS, SupportBridge } from "../within/sdk/index.mjs";
+import { SERVER_INSTRUCTIONS, SupportBridge } from "@getwithin/sdk";
 import { withCompanyAccess } from "./company-access.js";
 import { companies, type Company, type Industry } from "./data.js";
 
@@ -65,7 +65,7 @@ export function createServer(posthog = posthogClient): ServerInstallation {
   if (posthog) instrument(server, posthog);
 
   const support = SupportBridge.install(server, {
-    apiKey: process.env.SUPPORTBRIDGE_API_KEY,
+    apiKey: process.env.SUPPORTBRIDGE_API_KEY!,
     baseUrl: process.env.SUPPORTBRIDGE_URL,
     source: process.env.SUPPORTBRIDGE_SOURCE,
     vendorName: "Pitch Fork",
@@ -81,13 +81,13 @@ export function createServer(posthog = posthogClient): ServerInstallation {
   }) => {
     const registeredTool = support.wrapTool({ ...tool, handler: withCompanyAccess(tool.name, tool.handler) });
     server.registerTool(
-      registeredTool.name,
+      registeredTool.name ?? tool.name,
       {
         title: registeredTool.title,
         description: registeredTool.description,
-        inputSchema: registeredTool.inputSchema,
+        inputSchema: registeredTool.inputSchema as typeof tool.inputSchema,
       },
-      registeredTool.handler,
+      registeredTool.handler as typeof tool.handler,
     );
   };
 

@@ -19,7 +19,7 @@ services:
       - key: SUPPORTBRIDGE_API_KEY
         sync: false
       - key: SUPPORTBRIDGE_URL
-        value: https://app.getwith.in
+        value: https://staging.getwith.in
       - key: SUPPORTBRIDGE_SOURCE
         value: pitch-fork-mcp
       - key: POSTHOG_PROJECT_TOKEN

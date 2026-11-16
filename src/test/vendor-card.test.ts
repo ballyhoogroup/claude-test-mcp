@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { previewIntentOfferHtml } from "@getwithin/sdk";
 import { createContext, runInContext } from "node:vm";
 
 test("choice card shows a named online representative and clears them for the assistant", () => {
-  const source = readFileSync(new URL("../../within/sdk/index.mjs", import.meta.url), "utf8");
+  const source = previewIntentOfferHtml();
   function extract(name: string) {
     const start = source.indexOf(`function ${name}(`);
     assert.ok(start >= 0, name);

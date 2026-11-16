@@ -13,11 +13,11 @@ delete process.env.POSTHOG_PROJECT_TOKEN;
 globalThis.fetch = async () => Response.json({});
 const { createServer } = await import("../server.js");
 
-async function connectedClient(userId = `test-${crypto.randomUUID()}`) {
+async function connectedClient(userId = `test-${crypto.randomUUID()}`, claims: Record<string, unknown> = {}) {
   const { server } = createServer();
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const send = clientTransport.send.bind(clientTransport);
-  clientTransport.send = (message, options) => send(message, { ...options, authInfo: { token: "test", clientId: "test", scopes: [], extra: { sub: userId } } });
+  clientTransport.send = (message, options) => send(message, { ...options, authInfo: { token: "test", clientId: "test", scopes: [], extra: { sub: userId, ...claims } } });
   const client = new Client({ name: "pitch-fork-test", version: "1.0.0" });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return { client, server };
@@ -31,7 +31,7 @@ test("installs only the local SDK tools beside the five business tools", async (
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), [
       "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer",
-      "list_companies", "list_industries", "search",
+      "list_companies", "list_industries", "report_void", "search",
     ]);
     assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
@@ -133,8 +133,8 @@ test("PostHog instrumentation records each tool call once and preserves existing
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 8);
-    assert.equal(new Set(tools.map(tool => tool.name)).size, 8);
+    assert.equal(tools.length, 9);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, 9);
     assert.equal(tools.find(tool => tool.name === "list_industries")?.description, "List Pitch Fork industries and company counts.");
     const result = await client.callTool({ name: "list_industries", arguments: {} });
     assert.notEqual(result.isError, true);
@@ -178,4 +178,56 @@ test("choice card previews an available representative without reserving or assi
     assert.ok(requests.every(request => /\/v1\/(answers|activity|install)$/.test(request.url)));
     assert.ok(requests.every(request => !/not-to-be-sent|representativeId|representative_id|repId|reserve/.test(JSON.stringify(request.body))));
   } finally { globalThis.fetch = originalFetch; await client.close(); await server.close(); }
+});
+
+
+test("SDK identity uses verified namespaced email and never a namespaced sub", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<any> = [];
+  globalThis.fetch = async (input, init) => { calls.push({url: String(input), body: init?.body ? JSON.parse(String(init.body)) : {}}); return Response.json({}); };
+  try {
+    for (const verified of [true, "true", false]) {
+      const bareSub = "identity-test-" + String(verified);
+      const {client, server} = await connectedClient(bareSub, {
+        "https://identity.example.invalid/email": "SDK.Test@Example.Invalid",
+        "https://identity.example.invalid/email_verified": verified,
+        "https://identity.example.invalid/name": "SDK Test",
+        "https://identity.example.invalid/sub": "must-not-be-used",
+      });
+      try {
+        calls.length = 0;
+        const result = await client.callTool({name: "list_industries", arguments: {context: "Explore industries"}});
+        assert.notEqual(result.isError, true);
+        const activity = calls.find(call => call.url.endsWith("/v1/activity"));
+        assert.ok(activity, "wrapped tool reports activity");
+        assert.equal(activity.body.customerUserId, verified ? "sdk.test@example.invalid" : bareSub);
+        assert.ok(!JSON.stringify(activity.body).includes("must-not-be-used"));
+        for (const field of ["argumentPreview", "resultText", "tokens", "summary"]) assert.equal(activity.body[field], undefined);
+        assert.equal(activity.body.mcpIntent, "Explore industries");
+      } finally {await client.close(); await server.close();}
+    }
+  } finally {globalThis.fetch = originalFetch;}
+});
+
+
+test("report_void records a registered business tool, rejects unknown tools, and ignores empty searches", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{url: string; body: any}> = [];
+  globalThis.fetch = async (input, init) => {calls.push({url: String(input), body: init?.body ? JSON.parse(String(init.body)) : {}}); return Response.json({});};
+  const {client, server} = await connectedClient();
+  try {
+    calls.length = 0;
+    const missing = await client.callTool({name: "report_void", arguments: {tool: "search_companies", asked: "sustainability tech companies"}});
+    assert.equal((missing.structuredContent as any).status, "tool_not_offered");
+    assert.ok(!calls.some(call => call.body.voidTool));
+    const empty = await client.callTool({name: "search", arguments: {query: "no-such-company-void-test"}});
+    assert.notEqual(empty.isError, true);
+    assert.ok(!calls.some(call => call.body.voidTool));
+    const result = await client.callTool({name: "report_void", arguments: {tool: "search", asked: "sustainability tech companies"}});
+    assert.equal((result.structuredContent as any).recorded, true);
+    const activity = calls.find(call => call.body.voidTool);
+    assert.ok(activity?.url.endsWith("/v1/activity"));
+    assert.equal(activity?.body.voidTool, "search");
+    assert.equal(activity?.body.voidAsked, "sustainability tech companies");
+  } finally {globalThis.fetch = originalFetch; await client.close(); await server.close();}
 });
