@@ -36,6 +36,8 @@ test("installs only the local SDK tools beside the five business tools", async (
     assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
     assert.match(client.getInstructions() ?? "", /Call get_vendor_answer/);
+    assert.match(client.getInstructions() ?? "", /When a tool this server offers cannot return what the user asked/);
+    assert.match(client.getInstructions() ?? "", /A filter that matched nothing/);
     const { resources } = await client.listResources();
     assert.deepEqual(resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
     for (const name of ["search", "fetch", "list_companies", "get_company", "list_industries"]) {

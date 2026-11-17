@@ -2,7 +2,7 @@
   "package": "@getwithin/sdk",
   "version": "0.3.0",
   "repository": "https://github.com/supportbridge-within/supportbridge-sdk-fork",
-  "commit": "aeaa8be60f674cd5278f54e3cd462302740b7610",
+  "commit": "20e8a0b64101a97ad443fc3e1f2a505d684c81f7",
   "artifact": "getwithin-sdk-0.3.0.tgz",
-  "sha256": "534698717fae9ef718f41eb236c1b97ef92d4c19425267f4c7ca237af1333ac5"
+  "sha256": "431590ca3a8af8de4de2f7f37dff4e17a2fc6bf19cec6d7e0c41238e3caff200"
 }
