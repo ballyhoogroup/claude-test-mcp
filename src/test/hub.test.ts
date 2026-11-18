@@ -50,6 +50,13 @@ test("hub returns real item text, private identity and matching UI metadata", as
     const result = await client.callTool({ name: "open_hub", arguments: { view: "suggestions" } });
     const text = (result.content as any[]).filter(c => c.type === "text").map(c => c.text).join("\n");
     for (const value of ["Selected tab: suggestions", "Real title: Real body", "Workflow title: Actual workflow prompt", "Actual message", "search: 7"]) assert.ok(text.includes(value), value);
+    const page = (result.content as any[]).find(c => c.type === "resource")?.resource.text;
+    assert.ok(page, "open_hub returns its current hub HTML");
+    assert.match(page, /Open on web/);
+    assert.match(page, />Refresh<\/button>/);
+    assert.doesNotMatch(page, /Open on the web/);
+    assert.match(page, /vendor \+ " support"/);
+    assert.match(page, /Pitch Fork/);
     assert.deepEqual(result.structuredContent, payload);
     assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/hub");
     assert.equal((result._meta as any).ui.resourceUri, "ui://supportbridge/hub");

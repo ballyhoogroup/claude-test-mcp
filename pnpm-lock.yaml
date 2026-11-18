@@ -202,7 +202,7 @@ packages:
     os: [win32]
 
   '@getwithin/sdk@file:vendor/getwithin-sdk-0.3.0.tgz':
-    resolution: {integrity: sha512-RHtXK4mAiKuWZ2MM2OKHgX/qfhrsm9gtZKWpiM/+LKhOw2a/N+IBNhtGb9VLhaow1AZYI6hShew9e8GbYynd8Q==, tarball: file:vendor/getwithin-sdk-0.3.0.tgz}
+    resolution: {integrity: sha512-pt2HtAcSKb7tFZDgSBAuXPPc0rSdR9RDP6N5mxuKOgJN5V7x8ACqG2KD03SvriPBFYWnMWzdJTUkDticVQY8WA==, tarball: file:vendor/getwithin-sdk-0.3.0.tgz}
     version: 0.3.0
     engines: {node: '>=20'}
     hasBin: true
