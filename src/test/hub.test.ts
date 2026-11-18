@@ -63,16 +63,16 @@ test("hub failure and decline statuses attach no page and never connect a repres
   const previous = globalThis.fetch;
   let status = "off";
   const urls: string[] = [];
-  globalThis.fetch = async input => { const url = String(input); urls.push(url); if (url.endsWith("/v1/install")) return Response.json({}); if (status === "unreachable") throw new Error("offline"); return Response.json({status}); };
+  globalThis.fetch = async input => { const url = String(input); urls.push(url); if (url.endsWith("/v1/install")) return Response.json({}); if (status === "unreachable") throw new Error("offline"); if (status === "http502") return Response.json({error: "request_failed"}, {status: 502}); return Response.json({status}); };
   const {client, server} = await connected(true);
   try {
-    for (const [next, text] of [["sign_in", "Sign in to open your hub."], ["off", "The hub is not turned on."], ["silenced", "Okay. The hub stays closed."], ["unreachable", "The hub could not be opened. Nothing was shared."]]) {
+    for (const [next, text] of [["sign_in", "Sign in to open your hub."], ["off", "The hub is not turned on."], ["silenced", "Okay. The hub stays closed."], ["unreachable", "The hub could not be opened. Nothing was shared."], ["http502", "The hub could not be opened. Nothing was shared."]]) {
       status = next;
       const result = await client.callTool({name: "open_hub", arguments: {view: next === "silenced" ? "decline" : "inbox"}});
       assert.equal((result.content as any[])[0].text, text);
       assert.equal(result._meta, undefined);
       assert.equal((result.content as any[]).some(c => c.type === "resource"), false);
-      if (next === "unreachable") assert.equal(result.isError, true);
+      if (next === "unreachable" || next === "http502") assert.equal(result.isError, true);
     }
     assert.ok(urls.some(u => u.endsWith("/v1/hubs/decline")));
     assert.ok(urls.every(u => /\/v1\/(install|hubs\/(open|decline))$/.test(u)));

@@ -4,8 +4,9 @@
   "repository": "https://github.com/supportbridge-within/supportbridge-sdk-fork",
   "commit": "a7836c4495fb9baa9a73275fc43930730ddf9cbd",
   "artifact": "getwithin-sdk-0.3.0.tgz",
-  "sha256": "bb573b1affec1bc6cd25c198d85349abeda15e61aed2dee540a07b072245bb19",
+  "sha256": "1822e722a4db79b4eead84d909c6cdc1b495fa4f3a79b898fc23bfb02bb0c2f3",
   "localChanges": [
-    "Include suggestion prompts alongside their titles in hub plain-text results."
+    "Include suggestion prompts alongside their titles in hub plain-text results.",
+    "Treat API error responses including HTTP 502 as hub errors with no UI attached."
   ]
 }
