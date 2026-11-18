@@ -57,6 +57,10 @@ test("hub returns real item text, private identity and matching UI metadata", as
     assert.doesNotMatch(page, /Open on the web/);
     assert.match(page, /vendor \+ " support"/);
     assert.match(page, /Pitch Fork/);
+    assert.match(page, /content: \[\{ type: "text", text: text \}\]/);
+    assert.match(page, /callServerTool\("open_hub", \{ view: currentView\(\) \}\)/);
+    assert.match(page, /applyHost\(hub\)/);
+    assert.doesNotMatch(page, /Your Pitch Fork hub/);
     assert.deepEqual(result.structuredContent, payload);
     assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/hub");
     assert.equal((result._meta as any).ui.resourceUri, "ui://supportbridge/hub");

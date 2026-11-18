@@ -1,2 +1,6 @@
 allowBuilds:
   esbuild: true
+  '@getwithin/sdk@git+ssh://git@github.com/supportbridge-within/supportbridge-sdk-fork.git#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk': true
+  '@getwithin/sdk@git+ssh://git@github.com/supportbridge-within/supportbridge-sdk-fork.git#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk(patch_hash=9bfa608263655e3368e79b8db0f2573a81243d419d15ee84f1be43d8aaae5dea)': true
+patchedDependencies:
+  '@getwithin/sdk': patches/within-hub-compat.patch
