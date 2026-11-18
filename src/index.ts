@@ -41,7 +41,7 @@ app.get("/", (_req, res) => {
     companyAccessDefaultLimit: 10,
     posthogMcpVersion: "0.23.0",
     posthogAnalyticsEnabled: Boolean(posthogClient),
-    supportBridgeSdkVersion: "0.3.0-20e8a0b64101a97ad443fc3e1f2a505d684c81f7",
+    supportBridgeSdkVersion: "0.3.0-9ef909bdfee9b773f84719ce1bda5a317e7aec3d",
     supportBridgeCaptureArguments: false,
     supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)
       && process.env.SUPPORTBRIDGE_URL === "https://staging.getwith.in"
