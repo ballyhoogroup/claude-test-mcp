@@ -4,7 +4,8 @@ services:
     runtime: node
     plan: free
     branch: main
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    buildCommand: >-
+      corepack enable && git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/ && git config --global --add url."https://github.com/".insteadOf git@github.com: && pnpm install --frozen-lockfile && pnpm run build
     startCommand: node dist/index.js
     healthCheckPath: /healthz
     envVars:
