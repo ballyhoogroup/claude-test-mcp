@@ -31,7 +31,7 @@ test("installs only the local SDK tools beside the five business tools", async (
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), [
       "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer",
-      "list_companies", "list_industries", "report_void", "search",
+      "list_companies", "list_industries", "open_hub", "report_void", "search",
     ]);
     assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
@@ -39,7 +39,7 @@ test("installs only the local SDK tools beside the five business tools", async (
     assert.match(client.getInstructions() ?? "", /When a tool this server offers cannot return what the user asked/);
     assert.match(client.getInstructions() ?? "", /A filter that matched nothing/);
     const { resources } = await client.listResources();
-    assert.deepEqual(resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
+    assert.deepEqual(resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/hub", "ui://supportbridge/intent-offer"]);
     for (const name of ["search", "fetch", "list_companies", "get_company", "list_industries"]) {
       assert.equal(tools.find(tool => tool.name === name)?._meta, undefined);
     }
@@ -135,8 +135,8 @@ test("PostHog instrumentation records each tool call once and preserves existing
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 9);
-    assert.equal(new Set(tools.map(tool => tool.name)).size, 9);
+    assert.equal(tools.length, 10);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, 10);
     assert.equal(tools.find(tool => tool.name === "list_industries")?.description, "List Pitch Fork industries and company counts.");
     const result = await client.callTool({ name: "list_industries", arguments: {} });
     assert.notEqual(result.isError, true);
@@ -232,4 +232,38 @@ test("report_void records a registered business tool, rejects unknown tools, and
     assert.equal(activity?.body.voidTool, "search");
     assert.equal(activity?.body.voidAsked, "sustainability tech companies");
   } finally {globalThis.fetch = originalFetch; await client.close(); await server.close();}
+});
+
+test("hub invites preserve business output, fail open, and yield to manual offers", async () => {
+  const previous = globalThis.fetch;
+  let mode = "off";
+  let invites = 0;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.endsWith("/v1/offers/deliver")) return Response.json(mode === "manual" ? { offer: {id: "manual-hub-test", representativeName: "Test Representative", vendorName: "Pitch Fork"}, newlyPresented: true } : {});
+    if (url.endsWith("/v1/hubs/invite")) {
+      invites++;
+      if (mode === "failure") throw new Error("offline");
+      return Response.json(mode === "invite" ? {line: "Your Pitch Fork hub is ready. Open it?"} : {});
+    }
+    return Response.json({});
+  };
+  const {client, server} = await connectedClient();
+  try {
+    const baseline = await client.callTool({name: "list_industries", arguments: {}});
+    mode = "invite";
+    const invited = await client.callTool({name: "list_industries", arguments: {}});
+    assert.deepEqual(invited.structuredContent, baseline.structuredContent);
+    assert.deepEqual((invited.content as any[]).slice(0, (baseline.content as any[]).length), baseline.content);
+    assert.equal((invited.content as any[]).at(-1).text, "Your Pitch Fork hub is ready. Open it?");
+    mode = "failure";
+    assert.deepEqual(await client.callTool({name: "list_industries", arguments: {}}), baseline);
+    mode = "manual";
+    const before = invites;
+    const manual = await client.callTool({name: "list_industries", arguments: {}});
+    assert.equal(invites, before);
+    assert.match(JSON.stringify(manual), /manual-hub-test/);
+    assert.deepEqual((manual.content as any[]).slice(0, (baseline.content as any[]).length), baseline.content);
+    assert.ok(!JSON.stringify(manual).includes("Your Pitch Fork hub is ready"));
+  } finally {globalThis.fetch = previous; await client.close(); await server.close();}
 });
