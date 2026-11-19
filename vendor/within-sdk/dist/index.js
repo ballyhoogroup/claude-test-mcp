@@ -3681,6 +3681,54 @@ function startChat(){
   });
 }
 var lastSize = "";
+// The card stretches to fill its frame, so its own box only reports the frame's height. When
+// the host opens the hub inline at a small height, that would be reported back and the card
+// would stay squeezed. Swap the open panel's squeezed height for the height of its content.
+function openPanel(){
+  for (var i = 0; i < SCREENS.length; i++) {
+    var panel = el("panel-" + SCREENS[i]);
+    if (panel && !panel.hidden) return panel;
+  }
+  return null;
+}
+function outerHeight(node){
+  var height = Number(node && node.offsetHeight) || 0;
+  if (!height) return 0;
+  try {
+    var style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+    // #message-list sits at the bottom with margin-top: auto; that margin is free space, not content.
+    if (style && node.id !== "message-list") height += (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+  } catch (e) {}
+  return height;
+}
+function naturalHeight(cardHeight){
+  var card = el("hub-card");
+  var panel = openPanel();
+  var parts = card && card.children;
+  if (!panel || !parts || !parts.length || !window.getComputedStyle) return cardHeight;
+  var total = 0;
+  try {
+    var box = window.getComputedStyle(card);
+    total += (parseFloat(box.paddingTop) || 0) + (parseFloat(box.paddingBottom) || 0);
+    total += (parseFloat(box.borderTopWidth) || 0) + (parseFloat(box.borderBottomWidth) || 0);
+  } catch (e) { return cardHeight; }
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    if (!part || part.hidden) continue;
+    if (part !== panel) { total += outerHeight(part); continue; }
+    var kids = panel.children || [];
+    var content = 0;
+    for (var k = 0; k < kids.length; k++) {
+      if (kids[k] && !kids[k].hidden) content += outerHeight(kids[k]);
+    }
+    try {
+      var pane = window.getComputedStyle(panel);
+      content += (parseFloat(pane.marginTop) || 0) + (parseFloat(pane.marginBottom) || 0);
+    } catch (e2) {}
+    total += content;
+  }
+  return total > 0 ? total : cardHeight;
+}
 function tellHostSize(){
   var card = el("hub-card");
   var measured = 0;
@@ -3692,6 +3740,7 @@ function tellHostSize(){
   }
   if (!measured && card) measured = card.offsetHeight || card.scrollHeight || 0;
   if (!measured && document.documentElement) measured = document.documentElement.scrollHeight || 0;
+  measured = naturalHeight(measured);
   var height = Math.ceil(measured);
   if (height < 1) return;
   var width = 0;
