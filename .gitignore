@@ -5,3 +5,5 @@ dist/
 *.log
 .data/
 .within-hub-patch*/
+!vendor/within-sdk/dist/
+!vendor/within-sdk/dist/**

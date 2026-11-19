@@ -1,0 +1,59 @@
+{
+  "name": "@getwithin/sdk",
+  "version": "0.3.0",
+  "description": "Install Within on a vendor MCP server.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./doctor": {
+      "types": "./dist/doctor.d.ts",
+      "default": "./dist/doctor.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supportbridge-within/supportbridge-sdk-fork.git",
+    "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/doctor.ts src/cli.ts --format esm --dts --clean",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "prepack": "yarn build"
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": ">=1.30.0",
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "@types/node": "^24.0.0",
+    "@within/core": "*",
+    "@within/typescript-config": "*",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.4",
+    "zod": "^3.25.76"
+  },
+  "bin": {
+    "getwithin-sdk": "./dist/cli.js"
+  }
+}

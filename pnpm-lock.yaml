@@ -4,16 +4,13 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@getwithin/sdk': 9bfa608263655e3368e79b8db0f2573a81243d419d15ee84f1be43d8aaae5dea
-
 importers:
 
   .:
     dependencies:
       '@getwithin/sdk':
-        specifier: github:supportbridge-within/supportbridge-sdk-fork#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk
-        version: git+ssh://git@github.com/supportbridge-within/supportbridge-sdk-fork.git#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk(patch_hash=9bfa608263655e3368e79b8db0f2573a81243d419d15ee84f1be43d8aaae5dea)(@modelcontextprotocol/sdk@1.30.1(zod@3.25.76))(zod@3.25.76)
+        specifier: link:vendor/within-sdk
+        version: link:vendor/within-sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.1
         version: 1.30.1(zod@3.25.76)
@@ -203,15 +200,6 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
-
-  '@getwithin/sdk@git+ssh://git@github.com/supportbridge-within/supportbridge-sdk-fork.git#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk':
-    resolution: {commit: 9fd79ddc9b5469d84768c1052b7b8bd25b1ca763, path: /packages/sdk, repo: git@github.com:supportbridge-within/supportbridge-sdk-fork.git, type: git}
-    version: 0.3.0
-    engines: {node: '>=20'}
-    hasBin: true
-    peerDependencies:
-      '@modelcontextprotocol/sdk': '>=1.30.0'
-      zod: ^3.25.0 || ^4.0.0
 
   '@hono/node-server@2.1.1':
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
@@ -859,11 +847,6 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
-
-  '@getwithin/sdk@git+ssh://git@github.com/supportbridge-within/supportbridge-sdk-fork.git#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk(patch_hash=9bfa608263655e3368e79b8db0f2573a81243d419d15ee84f1be43d8aaae5dea)(@modelcontextprotocol/sdk@1.30.1(zod@3.25.76))(zod@3.25.76)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.30.1(zod@3.25.76)
-      zod: 3.25.76
 
   '@hono/node-server@2.1.1(hono@4.13.8)':
     dependencies:

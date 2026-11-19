@@ -30,7 +30,7 @@ test("installs only the local SDK tools beside the five business tools", async (
   try {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), [
-      "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer",
+      "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer", "hub_card",
       "list_companies", "list_industries", "open_hub", "report_void", "search",
     ]);
     assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
@@ -135,8 +135,8 @@ test("PostHog instrumentation records each tool call once and preserves existing
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 10);
-    assert.equal(new Set(tools.map(tool => tool.name)).size, 10);
+    assert.equal(tools.length, 11);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, 11);
     assert.equal(tools.find(tool => tool.name === "list_industries")?.description, "List Pitch Fork industries and company counts.");
     const result = await client.callTool({ name: "list_industries", arguments: {} });
     assert.notEqual(result.isError, true);
@@ -253,7 +253,7 @@ test("hub invites preserve business output, fail open, and yield to manual offer
     const baseline = await client.callTool({name: "list_industries", arguments: {}});
     mode = "invite";
     const invited = await client.callTool({name: "list_industries", arguments: {}});
-    assert.deepEqual(invited.structuredContent, baseline.structuredContent);
+    assert.equal((invited.structuredContent as any).hubInvitation, "Your Pitch Fork hub is ready. Open it?");
     assert.deepEqual((invited.content as any[]).slice(0, (baseline.content as any[]).length), baseline.content);
     assert.equal((invited.content as any[]).at(-1).text, "Your Pitch Fork hub is ready. Open it?");
     mode = "failure";

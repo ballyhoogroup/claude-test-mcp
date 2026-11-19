@@ -24,7 +24,7 @@ test("hubs is optional and preserves the existing four tool definitions", async 
     const before = await off.client.listTools(), after = await on.client.listTools();
     assert.deepEqual(before.tools.map(t => t.name).sort(), ["confirm_assistance", "decline_assistance", "get_vendor_answer", "report_void"]);
     for (const tool of before.tools) assert.deepEqual(after.tools.find(t => t.name === tool.name), tool);
-    assert.equal(after.tools.length, before.tools.length + 1);
+    assert.equal(after.tools.length, before.tools.length + 2);
     assert.equal((await off.client.listResources()).resources.some(r => r.uri === "ui://supportbridge/hub"), false);
     const hub = after.tools.find(t => t.name === "open_hub")!;
     assert.equal(hub.title, "Open hub");
@@ -49,18 +49,19 @@ test("hub returns real item text, private identity and matching UI metadata", as
   try {
     const result = await client.callTool({ name: "open_hub", arguments: { view: "suggestions" } });
     const text = (result.content as any[]).filter(c => c.type === "text").map(c => c.text).join("\n");
-    for (const value of ["Selected tab: suggestions", "Real title: Real body", "Workflow title: Actual workflow prompt", "Actual message", "search: 7"]) assert.ok(text.includes(value), value);
+    assert.match(text, /Pitch Fork hub is open on suggestions/);
     const page = (result.content as any[]).find(c => c.type === "resource")?.resource.text;
     assert.ok(page, "open_hub returns its current hub HTML");
-    assert.match(page, /Open on web/);
-    assert.match(page, />Refresh<\/button>/);
+
+    assert.match(page, /id="hub-refresh"[^>]*aria-label="Refresh"/);
     assert.doesNotMatch(page, /Open on the web/);
     assert.match(page, /vendor \+ " support"/);
     assert.match(page, /Pitch Fork/);
     assert.match(page, /content: \[\{ type: "text", text: text \}\]/);
-    assert.match(page, /callServerTool\("open_hub", \{ view: currentView\(\) \}\)/);
+    assert.match(page, /callServerTool\("hub_card", \{ action: "refresh", view: view \}\)/);
     assert.match(page, /applyHost\(hub\)/);
     assert.doesNotMatch(page, /Your Pitch Fork hub/);
+    for (const tab of ["Feed", "Messages", "Suggestions", "Usage", "Previous chats"]) assert.ok(page.includes(tab), tab);
     assert.deepEqual(result.structuredContent, payload);
     assert.equal(result._meta?.["openai/outputTemplate"], "ui://supportbridge/hub");
     assert.equal((result._meta as any).ui.resourceUri, "ui://supportbridge/hub");

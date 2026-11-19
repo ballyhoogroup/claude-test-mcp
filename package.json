@@ -15,7 +15,7 @@
     "node": ">=20.20.0 <21 || >=22.22.0"
   },
   "dependencies": {
-    "@getwithin/sdk": "github:supportbridge-within/supportbridge-sdk-fork#9fd79ddc9b5469d84768c1052b7b8bd25b1ca763&path:/packages/sdk",
+    "@getwithin/sdk": "link:vendor/within-sdk",
     "@modelcontextprotocol/sdk": "^1.30.1",
     "@posthog/mcp": "0.23.0",
     "express": "^4.21.2",
