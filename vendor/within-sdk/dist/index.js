@@ -1530,7 +1530,7 @@ function instrumentTool(ctx, toolName, handler) {
     if (!presentingManual && ctx.options.hubs === true) {
       const invite = await serviceFetch(ctx.baseUrl, ctx.options.apiKey, "/v1/hubs/invite", {
         method: "POST",
-        body: identity
+        body: { ...identity, toolName }
       });
       const line = invite && typeof invite.line === "string" ? invite.line : "";
       if (line) return attachHubLine(result, line);
@@ -1859,8 +1859,6 @@ var LINE = "#E8E8E2";
 var SURFACE = "#FFFFFF";
 var MUTED = "#6B6B62";
 var AMBER = "#6B4E16";
-var AMBER_BG = "#F8E7C4";
-var MINE = "#E7F3EB";
 var THEIRS = "#F3F3F0";
 var SCRIPT_UNSAFE = /[<>&\u2028\u2029]/g;
 function scriptSafeJson(value) {
@@ -1880,38 +1878,66 @@ function hubHtml(payload) {
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; background: ${PAGE}; color: ${INK}; }
+  html, body { height: 100%; margin: 0; background: ${PAGE}; color: ${INK}; }
   body {
+    display: flex;
+    flex-direction: column;
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     font-size: 14px;
     line-height: 20px;
+    -webkit-font-smoothing: antialiased;
   }
   button, input { font: inherit; color: inherit; }
   button { cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid ${BRAND}; outline-offset: 2px; }
+  .ico::before, button.icon::before, .feed-actions .send::before, #hub-footer::before,
+  #usage-list .lock::before, .notice::before, .empty-art::before, .empty-row .empty-ico::before {
+    content: "";
+    display: inline-block;
+    flex: none;
+    width: 16px; height: 16px;
+    background: currentColor;
+    -webkit-mask: var(--i) center / contain no-repeat;
+    mask: var(--i) center / contain no-repeat;
+  }
   .card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     max-width: 100%;
+    min-height: 100%;
     background: ${SURFACE};
     border: 1px solid ${LINE};
-    border-radius: 16px;
-    padding: 16px 16px 12px;
+    border-radius: 20px;
+    padding: 20px 20px 12px;
     overflow: hidden;
   }
-  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-  .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .who { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
   .logo {
-    width: 36px; height: 36px; flex: none;
-    border-radius: 10px;
+    width: 40px; height: 40px; flex: none;
+    border-radius: 11px;
     background: ${BRAND}; color: #fff;
     display: grid; place-items: center;
-    font-size: 16px; font-weight: 700;
+    font-size: 17px; font-weight: 700;
   }
-  h2 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 700; }
-  .sub { margin: 1px 0 0; color: ${MUTED}; font-size: 12px; line-height: 16px; }
-  .people { display: flex; align-items: center; flex: none; padding-top: 4px; gap: 8px; }
-  .person { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .who > div:last-child { min-width: 0; }
+  h2 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .sub { margin: 2px 0 0; color: ${MUTED}; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .people { display: flex; align-items: center; flex: none; gap: 8px; }
+  .person { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .person-copy { display: flex; flex-direction: column; min-width: 0; }
+  .person-meta + .person-meta { display: none; }
   .person-name {
-    font-size: 13px; font-weight: 650; line-height: 18px;
+    font-size: 13px; font-weight: 600; line-height: 18px;
+    max-width: 140px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .person-meta {
+    color: ${MUTED};
+    font-size: 11px;
+    line-height: 14px;
     max-width: 140px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
@@ -1921,67 +1947,122 @@ function hubHtml(payload) {
     font-size: 11px; font-weight: 700;
   }
   .av {
+    position: relative;
     border-radius: 999px;
-    background: #ECE9F6; color: #5C5678;
+    background: #E6E2F6; color: #4B3F8F;
     border: 2px solid #fff;
   }
-  .people .av + .av { margin-left: -8px; }
+  .people .av { width: 30px; height: 30px; }
+  .people .person + .person .av { margin-left: -10px; }
   .online {
-    width: 8px; height: 8px; border-radius: 999px;
-    background: ${BRAND}; margin-left: 8px; flex: none;
+    position: absolute; right: -2px; bottom: -2px;
+    width: 10px; height: 10px; border-radius: 999px;
+    background: #12A150; border: 2px solid #fff;
   }
+  button.icon {
+    width: 36px; height: 36px; flex: none;
+    display: grid; place-items: center;
+    border: 1px solid ${LINE}; border-radius: 10px;
+    background: #fff; color: ${MUTED};
+    --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.64-6.36'/%3E%3Cpath d='M21 3v6h-6'/%3E%3C/svg%3E");
+  }
+  button.icon:hover { color: ${INK}; background: #F7F7F4; }
   .tabs {
-    display: flex; gap: 18px;
-    margin-top: 14px;
-    border-bottom: 1px solid ${LINE};
+    display: flex; gap: 4px;
+    margin-top: 16px;
+    padding: 4px;
+    background: #F2F2EE;
+    border-radius: 11px;
   }
   .tabs button {
-    background: none; border: 0;
-    border-bottom: 2px solid transparent;
-    padding: 8px 0 10px;
-    color: ${MUTED};
-    font-weight: 600;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 34px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 8px;
+    background: none; border: 0; border-radius: 8px;
+    color: #4A4A44;
+    font-size: 13px; font-weight: 500;
+    white-space: nowrap;
   }
-  .tabs button.on { color: ${INK}; border-bottom-color: ${INK}; }
+  .tabs button:hover { color: ${INK}; }
+  .tabs button.on {
+    background: #fff; color: ${INK}; font-weight: 600;
+    box-shadow: 0 1px 2px rgba(28,28,25,0.08), 0 0 0 1px rgba(28,28,25,0.04);
+  }
   .badge {
     display: inline-grid; place-items: center;
-    min-width: 16px; height: 16px; margin-left: 6px;
+    min-width: 16px; height: 16px;
     padding: 0 4px;
     border-radius: 999px;
-    background: #EEEDE8; color: ${MUTED};
-    font-size: 11px; font-weight: 700;
-    vertical-align: 1px;
+    background: ${BRAND}; color: #fff;
+    font-size: 10px; font-weight: 700; line-height: 16px;
   }
-  .scroll { margin-top: 12px; }
+  .notice {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 12px;
+    padding: 8px 8px 8px 12px;
+    border: 1px solid #EEDAAE;
+    border-radius: 10px;
+    background: #FFF6E6; color: ${AMBER};
+    font-size: 12px; line-height: 16px;
+    --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v5'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E");
+  }
+  .notice span { flex: 1; min-width: 0; }
+  .notice button {
+    height: 28px; padding: 0 10px;
+    border: 1px solid #E5C98F; border-radius: 7px;
+    background: #fff; color: ${AMBER};
+    font-size: 12px; font-weight: 600;
+  }
+  .scroll { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 14px; }
+  #message-list { margin-top: auto; }
   .kicker {
-    margin: 12px 0 4px;
+    margin: 12px 0 6px;
     color: ${MUTED};
     font-size: 12px;
     line-height: 16px;
   }
+  .scroll > div > .kicker:first-child { margin-top: 0; }
   .attention {
     display: flex; align-items: center; gap: 10px;
-    background: ${AMBER_BG}; color: ${AMBER};
+    background: #FFF6E6; color: ${AMBER};
+    border: 1px solid #EEDAAE;
     border-radius: 12px;
     padding: 10px 12px;
+    margin-bottom: 8px;
   }
-  .attention p { margin: 0; flex: 1; min-width: 0; font-size: 14px; line-height: 20px; }
+  .attention p { margin: 0; flex: 1; min-width: 0; font-size: 13px; line-height: 18px; }
   .attention button, button.text, button.quiet, button.more, button.link {
     background: none; border: 0; padding: 0;
-    font-weight: 700;
+    font-weight: 600;
   }
   .attention button { color: ${AMBER}; white-space: nowrap; }
-  .feed-row, .sug-row {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 10px 0;
+  .feed-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px;
+    margin: 0 0 8px;
+    border: 1px solid #E4E6E0;
+    border-radius: 14px;
+    background: #FAFBF9;
+  }
+  .feed-row:hover { border-color: #D6D9D1; }
+  .sug-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px;
+    margin: 0 0 8px;
+    border: 1px solid #E4E6E0;
+    border-radius: 14px;
   }
   .feed-copy, .sug-copy { flex: 1; min-width: 0; }
-  .feed-line, .sug-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .feed-line, .sug-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .feed-line strong, .sug-line strong {
-    font-size: 14px; line-height: 20px; font-weight: 700;
+    font-size: 14px; line-height: 20px; font-weight: 600;
   }
-  .when { color: ${MUTED}; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .feed-line strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .when { color: ${MUTED}; font-size: 12px; font-weight: 500; white-space: nowrap; }
   .preview, .reason {
+    margin-top: 2px;
     color: ${MUTED};
     font-size: 13px;
     line-height: 18px;
@@ -1989,10 +2070,25 @@ function hubHtml(payload) {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .sq {
-    border: 1.5px solid #D5D5CE;
+  .preview.open {
+    white-space: pre-wrap;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .quote {
+    margin: 0 0 8px;
+    padding: 6px 10px;
     border-radius: 8px;
-    background: #fff;
+    background: #F5F5F2;
+    color: ${INK};
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .sq {
+    width: 32px; height: 32px;
+    border: 0;
+    border-radius: 9px;
+    background: #EAF3ED; color: ${BRAND};
   }
   .mark {
     flex: none;
@@ -2000,38 +2096,54 @@ function hubHtml(payload) {
     margin-top: 1px;
     padding: 0 6px;
     border-radius: 6px;
-    background: #F3F3EF;
+    background: #EEEEE9;
     color: ${INK};
     font-size: 11px;
     font-weight: 700;
     line-height: 22px;
   }
+  .feed-row .av { width: 32px; height: 32px; font-size: 13px; border: 0; }
   .feed-row.tap { cursor: pointer; }
-  button.icon {
-    width: 32px; height: 32px; flex: none;
-    border: 0; border-radius: 8px;
-    background: none; color: ${MUTED};
-    font-size: 16px; line-height: 32px;
-  }
   .unread-dot {
     width: 8px; height: 8px; border-radius: 999px;
-    background: ${BRAND}; flex: none; margin-top: 6px;
+    background: ${BRAND}; flex: none;
   }
+  .note-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .note-actions button.quiet, .note-actions button.link, .note-actions button.dismiss {
+    height: 32px; margin: 0; padding: 0 12px;
+    border-radius: 8px;
+    font-size: 13px; line-height: 30px;
+  }
+  .note-actions button.quiet {
+    border: 1px solid ${BRAND}; background: #fff; color: ${BRAND}; font-weight: 600;
+  }
+  .note-actions button.quiet:hover { background: #EEF6F1; }
+  .note-actions button.link { border: 1px solid ${LINE}; background: #fff; color: ${INK}; }
+  .note-actions button.dismiss { color: ${MUTED}; font-weight: 500; }
+  .note-actions button.dismiss:hover { color: ${INK}; }
+  button.more { color: ${BRAND}; font-size: 13px; margin: 4px auto 0; }
   button.past {
     display: block; width: 100%;
     text-align: left;
-    background: #F3F3EF;
-    border: 0; border-radius: 12px;
+    background: #fff;
+    border: 1px solid #E4E6E0;
+    border-radius: 12px;
     padding: 10px 12px;
-    margin: 6px 0;
+    margin: 0 0 8px;
     font-weight: 500;
   }
+  button.past:hover { border-color: #D6D9D1; }
+  .past-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .past-top strong { font-size: 13px; line-height: 18px; font-weight: 600; }
   .stamp, .ended {
-    text-align: center;
-    color: #8A8A82;
+    display: flex; align-items: center; gap: 10px;
+    color: #7A7A72;
     font-size: 12px;
     line-height: 16px;
-    margin: 12px 0;
+    margin: 10px 0 8px;
+  }
+  .stamp::before, .stamp::after, .ended::before, .ended::after {
+    content: ""; flex: 1; height: 1px; background: ${LINE};
   }
   .rep-label { margin: 8px 0 4px; color: ${MUTED}; font-size: 12px; line-height: 16px; }
   .msg { display: flex; margin: 4px 0; }
@@ -2039,21 +2151,51 @@ function hubHtml(payload) {
   .bubble {
     max-width: 78%;
     border-radius: 16px;
-    padding: 8px 12px;
+    padding: 9px 14px;
     font-size: 14px;
     line-height: 20px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .bubble.mine { background: ${MINE}; color: ${INK}; }
-  .bubble.theirs { background: ${THEIRS}; color: ${INK}; }
+  .bubble.mine { background: ${BRAND}; color: #fff; border-bottom-right-radius: 4px; }
+  .bubble.theirs { background: ${THEIRS}; color: ${INK}; border-bottom-left-radius: 4px; }
   .sug-line { justify-content: space-between; gap: 12px; }
-  button.quiet { color: ${INK}; font-weight: 650; white-space: nowrap; }
+  button.quiet { color: ${BRAND}; font-weight: 600; white-space: nowrap; }
   button.dismiss {
-    background: none; border: 0; padding: 0; margin-top: 2px;
+    background: none; border: 0; padding: 0; margin-top: 6px;
     color: ${MUTED}; font-size: 12px;
   }
-  .hint { margin: 8px 0 0; color: ${MUTED}; font-size: 12px; line-height: 16px; }
+  .empty {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: 6px;
+    padding: 28px 16px 12px;
+  }
+  .empty-art {
+    width: 44px; height: 44px; margin-bottom: 4px;
+    display: grid; place-items: center;
+    border-radius: 12px;
+    background: #EAF3ED; color: ${BRAND};
+  }
+  .empty-art::before { width: 20px; height: 20px; }
+  .empty strong { font-size: 15px; line-height: 20px; font-weight: 600; }
+  .empty p { margin: 0; max-width: 280px; color: ${MUTED}; font-size: 13px; line-height: 19px; }
+  .empty-row {
+    display: flex; align-items: center; gap: 12px;
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px dashed #D9DBD4;
+    border-radius: 14px;
+  }
+  .empty-row .empty-ico {
+    width: 36px; height: 36px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 10px;
+    background: #F2F2EE; color: ${MUTED};
+  }
+  .empty-row strong { display: block; font-size: 13px; line-height: 18px; font-weight: 600; }
+  .empty-row span.sub-line { display: block; color: ${MUTED}; font-size: 12px; line-height: 16px; }
+  .hint { margin: 8px 0 0; color: ${MUTED}; font-size: 12px; line-height: 16px; font-weight: 500; text-align: center; }
+  .hint:empty { display: none; }
   .answer {
     margin: 0 0 10px;
     padding: 10px 12px;
@@ -2066,55 +2208,126 @@ function hubHtml(payload) {
     line-height: 20px;
     max-width: 100%;
   }
-  .composer { display: flex; gap: 8px; align-items: center; }
+  #hub-composer-row {
+    margin: 12px -20px 0;
+    padding: 14px 20px 0;
+    border-top: 1px solid ${LINE};
+  }
+  .composer {
+    display: flex; gap: 8px; align-items: center;
+    padding: 5px 5px 5px 14px;
+    border: 1px solid #DADBD4;
+    border-radius: 14px;
+    background: #fff;
+  }
+  .composer:focus-within { border-color: ${BRAND}; box-shadow: 0 0 0 3px rgba(47,125,79,0.12); }
   .composer input {
     flex: 1; min-width: 0;
-    border: 1px solid #E4E4DE;
-    border-radius: 12px;
-    background: #fff;
-    padding: 10px 12px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    padding: 7px 0;
   }
+  .composer input:focus-visible { outline: none; }
   button.send {
     background: ${BRAND}; color: #fff; border: 0;
-    border-radius: 12px;
-    padding: 10px 16px;
-    font-weight: 700;
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-weight: 600;
     white-space: nowrap;
   }
-  .fine {
-    display: flex; justify-content: space-between; align-items: center; gap: 12px;
-    margin-top: 8px;
+  button.send:hover { filter: brightness(0.94); }
+  .feed-actions { display: flex; gap: 8px; }
+  .feed-actions .send {
+    flex: 1;
+    height: 44px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 11px;
+    --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E");
+  }
+  button.send.alt {
+    background: #fff;
+    color: ${INK};
+    border: 1px solid #DADBD4;
+    --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z'/%3E%3C/svg%3E");
+  }
+  button.send.alt:hover { filter: none; background: #F7F7F4; }
+  .composer-meta {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-top: 10px;
     color: ${MUTED};
     font-size: 12px;
     line-height: 16px;
   }
-  .fine-links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .composer-meta:has(#hub-end:not([hidden])) { justify-content: space-between; }
+  #hub-footer { display: inline-flex; align-items: center; gap: 6px; --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='11' width='16' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3C/svg%3E"); }
+  #hub-footer::before { width: 12px; height: 12px; }
   button.link { color: ${MUTED}; font-weight: 500; font-size: 12px; }
   button.end {
-    display: block;
-    margin: 8px 0 0;
-    background: none; border: 0; padding: 0;
-    color: ${MUTED}; font-size: 12px; font-weight: 650;
+    margin: 0;
+    background: none;
+    border: 0;
+    padding: 4px 0;
+    color: ${MUTED};
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    white-space: nowrap;
   }
-  .usage-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .usage-head h3 { margin: 0; font-size: 16px; }
-  .usage-caption { margin: 0; color: ${MUTED}; font-size: 12px; }
-  .tiles { display: flex; gap: 12px; margin: 14px 0; }
+  button.end:hover { color: ${INK}; }
+  .card-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 14px -20px 0;
+    padding: 12px 20px 0;
+    border-top: 1px solid ${LINE};
+    color: ${MUTED};
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .card-foot button.link { color: #4A4A44; font-weight: 600; }
+  .card-foot .powered { color: ${MUTED}; }
+  .usage-head { display: flex; justify-content: space-between; align-items: center; }
+  .usage-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .usage-caption {
+    margin: 0; padding: 4px 10px;
+    border: 1px solid ${LINE}; border-radius: 999px;
+    color: ${MUTED}; font-size: 12px; line-height: 16px;
+  }
+  .tiles { display: flex; gap: 10px; margin: 14px 0; }
   .tile {
     flex: 1;
-    border: 1px solid ${LINE};
-    border-radius: 12px;
-    padding: 10px 12px;
+    border-radius: 14px;
+    background: #F7F7F4;
+    padding: 14px;
     min-width: 0;
   }
-  .tile span { display: block; color: ${MUTED}; font-size: 12px; }
-  .tile strong { display: block; font-size: 22px; line-height: 28px; }
+  .tile span { display: block; color: ${MUTED}; font-size: 12px; font-weight: 500; }
+  .tile strong { display: block; margin-top: 6px; font-size: 28px; line-height: 30px; font-weight: 700; letter-spacing: -0.02em; }
   .usage-row { margin: 10px 0; }
   .usage-row .name-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
   .track { display: block; height: 6px; margin-top: 4px; border-radius: 999px; background: #EEEDE6; }
   .bar { display: block; height: 6px; border-radius: 999px; background: ${BRAND}; }
-  #questions-list { margin-top: 18px; }
+  #questions-list { margin-top: 20px; padding-top: 18px; border-top: 1px solid ${LINE}; }
   .lock { margin: 12px 0 0; color: ${MUTED}; font-size: 12px; line-height: 16px; }
+  #usage-list .lock {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 12px;
+    border: 1px solid #DCEBE1;
+    border-radius: 12px;
+    background: #F3F9F5;
+    color: #3D5446;
+    line-height: 18px;
+    --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z'/%3E%3Cpath d='M9 12l2 2 4-4'/%3E%3C/svg%3E");
+  }
+  #usage-list .lock::before { color: ${BRAND}; margin-top: 1px; }
+  .empty-art.sug { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z'/%3E%3C/svg%3E"); }
+  .empty-ico.q { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); }
 </style>
 </head>
 <body>
@@ -2128,13 +2341,17 @@ function hubHtml(payload) {
         </div>
       </div>
       <div class="people" id="hub-people"></div>
-      <button id="hub-refresh" class="icon" type="button" aria-label="Refresh">\u21BB</button>
+      <button id="hub-refresh" class="icon" type="button" aria-label="Refresh"></button>
     </div>
     <div class="tabs" id="tabs">
       <button id="tab-inbox" type="button">Feed<span id="badge-inbox" class="badge" hidden></span></button>
       <button id="tab-messages" type="button">Messages<span id="badge-messages" class="badge" hidden></span></button>
       <button id="tab-suggestions" type="button">Suggestions<span id="badge-suggestions" class="badge" hidden></span></button>
       <button id="tab-usage" type="button">Usage<span id="badge-usage" class="badge" hidden></span></button>
+    </div>
+    <div id="hub-refresh-error" class="notice" role="status" hidden>
+      <span>Couldn't load the latest.</span>
+      <button id="hub-retry" type="button">Retry</button>
     </div>
     <div class="scroll" id="panel-inbox">
       <div id="inbox-list"></div>
@@ -2154,26 +2371,36 @@ function hubHtml(payload) {
     </div>
     <div id="hub-answer" class="answer" hidden></div>
     <div id="hub-composer-row">
-      <div class="composer">
-        <input id="hub-composer" placeholder="Ask the docs anything">
-        <button id="hub-send" class="send" type="button">Chat</button>
+      <p id="hub-quote" class="quote" hidden></p>
+      <div id="hub-feed-actions" hidden>
+        <div class="feed-actions">
+          <button id="hub-speak-live" class="send" type="button">Speak Live</button>
+          <button id="hub-ask-assistant" class="send alt" type="button">Ask Assistant</button>
+        </div>
       </div>
-      <div class="fine" id="hub-fine">
+      <div id="hub-live-composer">
+        <div class="composer">
+          <input id="hub-composer" placeholder="Message the team">
+          <button id="hub-send" class="send" type="button">Send</button>
+        </div>
+      </div>
+      <div class="composer-meta">
         <span id="hub-footer">Nothing is shared until you send it.</span>
-        <span class="fine-links">
-          <button id="hub-account" class="link" type="button">Account</button>
-          <span class="link">Powered by Within</span>
-        </span>
+        <button id="hub-end" class="end" type="button" hidden>End chat</button>
       </div>
-      <button id="hub-end" class="end" type="button" hidden>End chat</button>
     </div>
     <p id="hub-action-status" class="hint"></p>
+    <div class="card-foot" id="hub-links">
+      <button id="hub-account" class="link" type="button">Account</button>
+      <span class="powered">Powered by Within</span>
+    </div>
   </div>
   <script>
 var hostHub = ${data};
 var rpcId = 1;
 var feedExpanded = false;
 var openPast = "";
+var chatMode = "live";
 var TABS = ["inbox", "messages", "suggestions", "usage"];
 var SCREENS = ["inbox", "messages", "suggestions", "usage", "account"];
 function readHub(){
@@ -2187,7 +2414,7 @@ function hubPayload(value){
   if (!value || typeof value !== "object") return null;
   var hub = value.structuredContent || value;
   if (!hub || typeof hub !== "object") return null;
-  if (hub.inbox || hub.suggestions || hub.messages || hub.tabs || hub.account || hub.questions) return hub;
+  if (hub.inbox || hub.suggestions || hub.messages || hub.assistantMessages || hub.tabs || hub.account || hub.questions) return hub;
   return null;
 }
 function applyHost(value){
@@ -2214,12 +2441,21 @@ function show(name){
     var tab = el("tab-" + screen);
     if (tab) tab.classList.toggle("on", screen === name);
   }
-  var chatting = name === "inbox" || name === "messages";
+  var feed = name === "inbox";
+  var chatting = name === "messages";
   var row = el("hub-composer-row");
-  if (row) row.hidden = !chatting;
+  if (row) row.hidden = !feed && !chatting;
+  var actions = el("hub-feed-actions");
+  var liveBox = el("hub-live-composer");
+  if (actions) actions.hidden = !feed;
+  if (liveBox) liveBox.hidden = !chatting;
   syncComposer(name);
+  paintQuote();
+  paintPeople(readHub() || {}, name);
+  if (chatting) fillMessages((readHub() || {}).messages || []);
   if (name === "inbox") reportSeen(unreadIds((readHub() || {}).inbox, feedExpanded ? 0 : 4));
   if (name === "suggestions") reportSeen(unreadIds((readHub() || {}).suggestions, 0));
+  if (name === "messages" && chatMode !== "assistant") reportMessagesSeen();
   watchSize();
 }
 var seenIds = {};
@@ -2232,9 +2468,37 @@ function reportSeen(ids){
     fresh.push(key);
   });
   if (!fresh.length) return Promise.resolve();
-  return callServerTool("hub_card", { action: "seen", itemIds: fresh }).catch(function(){
+  return callServerTool("hub_card", { action: "seen", itemIds: fresh }).then(function(result){
+    if (!result || result.isError) {
+      fresh.forEach(function(id){ delete seenIds[id]; });
+      return;
+    }
+    markRead(fresh);
+  }).catch(function(){
     fresh.forEach(function(id){ delete seenIds[id]; });
   });
+}
+function reportMessagesSeen(){
+  return callServerTool("hub_card", { action: "seen", messagesSeen: true, itemIds: [] }).then(function(result){
+    if (!result || result.isError) return;
+    badge("messages", 0);
+  }).catch(function(){});
+}
+function markRead(ids){
+  var hub = readHub() || {};
+  var set = {};
+  (ids || []).forEach(function(id){ set[id] = true; });
+  ["inbox", "suggestions"].forEach(function(key){
+    (hub[key] || []).forEach(function(item){
+      if (item && set[item.id] && !item.readAt) item.readAt = new Date().toISOString();
+    });
+  });
+  hostHub = hub;
+  badge("inbox", unreadIds(hub.inbox, 0).length);
+  badge("suggestions", unreadIds(hub.suggestions, 0).length);
+  var view = currentView();
+  if (view === "inbox") fillFeed(hub.inbox || [], hub.attention || null);
+  if (view === "suggestions") fillSuggestions(hub.suggestions || [], hub.vendorName || "");
 }
 function unreadIds(items, limit){
   var rows = (items || []).slice().sort(function(a, b){
@@ -2325,14 +2589,6 @@ function postToChat(text){
   queued.push(send);
   return Promise.resolve();
 }
-function askTopic(question){
-  var words = String(question || "").replace(/\\s+/g, " ").trim();
-  if (words.length <= 80) return words;
-  var cut = words.slice(0, 80);
-  var space = cut.lastIndexOf(" ");
-  var topic = space > 20 ? cut.slice(0, space) : cut;
-  return topic.trim();
-}
 function showAnswer(text){
   var box = el("hub-answer");
   if (!box) return;
@@ -2363,11 +2619,6 @@ function toolResult(result){
   if (!result || typeof result !== "object") return null;
   return hubPayload(result) || hubPayload(result.structuredContent) || hubPayload(result.result);
 }
-function answerFrom(result){
-  var hub = toolResult(result);
-  if (hub && hub.answer) return String(hub.answer);
-  return "";
-}
 function firstName(name){
   var parts = String(name || "").trim().split(/\\s+/);
   return parts[0] || "";
@@ -2384,10 +2635,9 @@ function availableNames(hub){
   if (hub && hub.teamOnline === true && hub.teamName) return [String(hub.teamName).trim()];
   return [];
 }
-function askPlaceholder(hub){
+function messagePlaceholder(hub){
   var who = firstName(availableNames(hub)[0]);
-  if (!who) return "Ask the docs anything";
-  return "Ask " + who + " or the docs anything";
+  return who ? "Message " + who : "Message the team";
 }
 function sameDay(a, b){
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -2409,8 +2659,15 @@ function relTime(iso){
     var hours = Math.max(1, Math.round(diff / 3600000));
     return hours + "h";
   }
-  try { return d.toLocaleDateString("en-US", { weekday: "short" }); }
-  catch (e) { return ""; }
+  if (diff < 6 * 24 * 60 * 60 * 1000) {
+    try { return d.toLocaleDateString("en-US", { weekday: "short" }); }
+    catch (e) { return ""; }
+  }
+  try {
+    var opts = { month: "short", day: "numeric" };
+    if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+    return d.toLocaleDateString("en-US", opts);
+  } catch (e2) { return ""; }
 }
 function groupOf(iso){
   var d = atDate(iso);
@@ -2453,27 +2710,74 @@ function rowPreview(item){
   var title = String(item.title || "").trim();
   return realSentence(title) ? title : "";
 }
-function paintPeople(names, online){
+function teamOf(hub){
+  var team = hub && hub.team;
+  if (Array.isArray(team) && team.length) {
+    return team.map(function(person){
+      return {
+        name: String(person && person.name || "").trim(),
+        role: String(person && person.role || "").trim(),
+        company: String(person && person.company || "").trim()
+      };
+    }).filter(function(person){ return person.name; });
+  }
+  var company = String(hub && hub.vendorName || "").trim();
+  return availableNames(hub).map(function(name){
+    return { name: name, role: "", company: company };
+  });
+}
+function assistantLabel(hub){
+  var named = String(hub && hub.assistantName || "").trim();
+  if (named) return named;
+  var vendor = String(hub && hub.vendorName || "").trim() || "Company";
+  return /assistant$/i.test(vendor) ? vendor : vendor + " Assistant";
+}
+function paintPeople(hub, view){
   var row = el("hub-people");
   if (!row) return;
   row.replaceChildren();
-  names.slice(0, 2).forEach(function(name){
+  if (!view) view = currentView();
+  var assistant = chatMode === "assistant" && view === "messages";
+  var people = assistant
+    ? [{ name: assistantLabel(hub), role: "", company: "" }]
+    : teamOf(hub).slice(0, 2);
+  var online = !assistant && people.length > 0 && availableNames(hub).length > 0;
+  if (!assistant && !people.length && hub && hub.teamOnline === true && hub.teamName) {
+    people = [{ name: String(hub.teamName).trim(), role: "", company: String(hub.vendorName || "").trim() }];
+    online = true;
+  }
+  people.forEach(function(member, index){
     var person = document.createElement("span");
     person.className = "person";
     var circle = document.createElement("span");
     circle.className = "av";
-    circle.textContent = initial(name);
+    circle.textContent = initial(member.name);
+    var copy = document.createElement("span");
+    copy.className = "person-copy";
     var label = document.createElement("span");
     label.className = "person-name";
-    label.textContent = name;
-    person.append(circle, label);
+    label.textContent = member.name;
+    copy.append(label);
+    if (member.role) {
+      var role = document.createElement("span");
+      role.className = "person-meta";
+      role.textContent = member.role;
+      copy.append(role);
+    }
+    if (member.company) {
+      var company = document.createElement("span");
+      company.className = "person-meta";
+      company.textContent = member.company;
+      copy.append(company);
+    }
+    if (online && index === 0) {
+      var dot = document.createElement("span");
+      dot.className = "online";
+      circle.append(dot);
+    }
+    person.append(circle, copy);
     row.append(person);
   });
-  if (online) {
-    var dot = document.createElement("span");
-    dot.className = "online";
-    row.append(dot);
-  }
 }
 function syncComposer(view){
   var hub = readHub() || {};
@@ -2481,16 +2785,16 @@ function syncComposer(view){
   var input = el("hub-composer");
   var send = el("hub-send");
   if (input) {
-    input.placeholder = view === "messages"
-      ? (ended ? "Start a new conversation" : "Write a message...")
-      : askPlaceholder(hub);
+    input.placeholder = view === "messages" && !ended
+      ? "Write a message..."
+      : messagePlaceholder(hub);
   }
   if (send) {
-    send.textContent = view === "messages" ? "Send" : "Chat";
+    send.textContent = "Send";
     send.onclick = function(){ return startChat(); };
   }
   var end = el("hub-end");
-  var open = view === "messages" && Boolean(hub.conversationId) && !ended;
+  var open = view === "messages" && chatMode !== "assistant" && Boolean(hub.conversationId) && !ended;
   if (end) {
     end.hidden = !open;
     end.disabled = !open;
@@ -2558,51 +2862,27 @@ function fillFeed(items, attention){
     var when = document.createElement("span");
     when.className = "when";
     when.textContent = relTime(item.createdAt || item.at || "");
-    line.append(strong, when);
-    var preview = document.createElement("div");
-    preview.className = "preview";
-    preview.textContent = rowPreview(item);
-    copy.append(line, preview);
-    var actionLabel = String(item.actionLabel || "").trim();
-    var placeholder = /^(reply to marcus|book thursday)$/i.test(actionLabel);
-    var mashLabel = /^[a-z]{6,}$/i.test(actionLabel) && (actionLabel.match(/[aeiou]/gi) || []).length <= 1;
-    if (actionLabel && !placeholder && !mashLabel) {
-      var actions = document.createElement("div");
-      var primary = document.createElement("button");
-      primary.type = "button";
-      primary.className = "quiet";
-      primary.textContent = actionLabel;
-      primary.onclick = function(event){
-        if (event && event.stopPropagation) event.stopPropagation();
-        return notePrimary(item);
-      };
-      actions.append(primary);
-      var link = String(item.link || item.url || item.href || "");
-      if (item.secondaryLabel && /^https?:\\/\\//i.test(link)) {
-        var secondary = document.createElement("button");
-        secondary.type = "button";
-        secondary.className = "link";
-        secondary.textContent = String(item.secondaryLabel);
-        secondary.onclick = function(){
-          try { window.open(link, "_blank", "noopener"); } catch (e) {}
-        };
-        actions.append(secondary);
-      }
-      copy.append(actions);
-    }
-    row.append(icon, copy);
-    if (String(item.kind || "note") === "note") {
-      row.style.cursor = "pointer";
-      row.onclick = function(){
-        show("messages");
-        var input = el("hub-composer");
-        if (input && input.focus) input.focus();
-      };
-    }
     if (!item.readAt) {
       var dot = document.createElement("span");
       dot.className = "unread-dot";
-      row.append(dot);
+      line.append(dot);
+    }
+    line.append(strong, when);
+    var open = openNoteId && item.id && openNoteId === item.id;
+    var preview = document.createElement("div");
+    preview.className = open ? "preview open" : "preview";
+    preview.textContent = rowPreview(item);
+    copy.append(line, preview);
+    var kind = String(item.kind || "note");
+    if (kind === "note" || kind === "renewal") copy.append(noteActions(item, row));
+    row.append(icon, copy);
+    if (kind === "note" || kind === "renewal") {
+      row.style.cursor = "pointer";
+      row.onclick = function(){
+        openNoteId = open ? "" : String(item.id || "");
+        fillFeed((readHub() || {}).inbox || [], (readHub() || {}).attention || null);
+        watchSize();
+      };
     }
     list.append(row);
   });
@@ -2626,30 +2906,104 @@ function fillFeed(items, attention){
     list.append(more);
   }
 }
-function notePrimary(item){
-  if (item && item.prompt) return postToChat(String(item.prompt));
+var openNoteId = "";
+var replyQuote = "";
+var draftText = "";
+var draftClientId = "";
+function paintQuote(){
+  var node = el("hub-quote");
+  if (!node) return;
+  var text = String(replyQuote || "").trim();
+  node.hidden = !text;
+  node.textContent = text ? "Re: " + text : "";
+}
+function beginReply(item){
+  chatMode = "live";
+  replyQuote = String((item && (item.title || item.body)) || "").trim();
   show("messages");
+  paintQuote();
   var input = el("hub-composer");
   if (input && input.focus) input.focus();
 }
+function httpsLink(value){
+  var raw = String(value || "").trim();
+  if (!/^https:\\/\\//i.test(raw)) return "";
+  return raw;
+}
+function noteActions(item, row){
+  var actions = document.createElement("div");
+  actions.className = "note-actions";
+  var reply = document.createElement("button");
+  reply.type = "button";
+  reply.className = "quiet";
+  reply.textContent = "Reply";
+  reply.onclick = function(event){
+    if (event && event.stopPropagation) event.stopPropagation();
+    return beginReply(item);
+  };
+  actions.append(reply);
+  var actionLabel = String(item.actionLabel || "").trim();
+  if (actionLabel) {
+    var primary = document.createElement("button");
+    primary.type = "button";
+    primary.className = "quiet";
+    primary.textContent = actionLabel;
+    primary.onclick = function(event){
+      if (event && event.stopPropagation) event.stopPropagation();
+      return notePrimary(item);
+    };
+    actions.append(primary);
+  }
+  var link = httpsLink(item.secondaryUrl);
+  if (item.secondaryLabel && link) {
+    var secondary = document.createElement("button");
+    secondary.type = "button";
+    secondary.className = "link";
+    secondary.textContent = String(item.secondaryLabel);
+    secondary.onclick = function(event){
+      if (event && event.stopPropagation) event.stopPropagation();
+      try { window.open(link, "_blank", "noopener"); } catch (e) {}
+    };
+    actions.append(secondary);
+  }
+  var dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "dismiss";
+  dismiss.textContent = "Dismiss";
+  dismiss.onclick = function(event){
+    if (event && event.stopPropagation) event.stopPropagation();
+    return dismissItem(item, row);
+  };
+  actions.append(dismiss);
+  return actions;
+}
+function dismissItem(item, wrap){
+  if (wrap) wrap.hidden = true;
+  watchSize();
+  var id = item && item.id;
+  if (!id) return;
+  return callServerTool("hub_card", { action: "dismiss", itemIds: [id] }).then(function(result){
+    if (!result || result.isError) {
+      if (wrap) wrap.hidden = false;
+      watchSize();
+    }
+  }).catch(function(){
+    if (wrap) wrap.hidden = false;
+    watchSize();
+  });
+}
+function notePrimary(item){
+  return beginReply(item);
+}
 function sendAgain(text){
+  chatMode = "live";
   var input = el("hub-composer");
   if (input) input.value = text || "";
   show("messages");
   return startChat();
 }
-function staysInCard(item){
-  var label = String(item.actionLabel || "").trim();
-  if (/^(show me|open)$/i.test(label)) return true;
-  if (/^(set up|add to chat|add workflow to chat)$/i.test(label)) return false;
-  return !item.prompt;
-}
 function suggestionLabel(item){
-  var label = String(item.actionLabel || "").trim();
-  if (!label || /^add workflow to chat$/i.test(label) || /^add to chat$/i.test(label)) {
-    return item.prompt ? "Set up" : "Show me";
-  }
-  return label;
+  return item && item.prompt ? "Set up" : "Show me";
 }
 function fillSuggestions(items, vendor){
   var list = el("suggestion-list");
@@ -2674,8 +3028,10 @@ function fillSuggestions(items, vendor){
     action.className = "quiet";
     action.textContent = suggestionLabel(item);
     action.onclick = function(){
-      if (staysInCard(item)) return showInCard(item.title, item.body || item.prompt || "");
-      return postToChat(item.prompt || item.title || "");
+      if (/^set up$/i.test(String(action.textContent || "")) && item.prompt) {
+        return postToChat(String(item.prompt));
+      }
+      return showInCard(item.title, String(item.body || ""));
     };
     line.append(title, action);
     var reason = document.createElement("div");
@@ -2705,12 +3061,26 @@ function fillSuggestions(items, vendor){
     wrap.append(icon, copy);
     list.append(wrap);
   });
+  if (!(items || []).length) {
+    var empty = document.createElement("div");
+    empty.className = "empty";
+    var art = document.createElement("span");
+    art.className = "empty-art sug";
+    var head = document.createElement("strong");
+    head.textContent = "No suggestions yet";
+    var body = document.createElement("p");
+    body.textContent = "As your team uses " + (vendor || "this product") + ", tips picked for how you work will show up here.";
+    empty.append(art, head, body);
+    list.append(empty);
+  }
 }
 function fillMessages(messages){
   var list = el("message-list");
   list.replaceChildren();
   var hub = readHub() || {};
-  messages = (messages || []).concat(localMessages);
+  var assistant = chatMode === "assistant";
+  messages = assistant ? (hub.assistantMessages || []) : (messages || []).concat(localMessages);
+  if (!assistant) appendPrevious(list, hub);
   var lastStamp = "";
   var lastRep = "";
   messages.forEach(function(message){
@@ -2735,11 +3105,12 @@ function fillMessages(messages){
     }
     var mine = message.sender === "customer" || message.sender === "user";
     if (!mine) {
-      var name = String(message.senderName || "").trim() || String(hub.representativeName || "").trim();
+      var name = String(message.senderName || "").trim();
+      if (!assistant) name = name || String(hub.representativeName || "").trim();
       if (name && name !== lastRep) {
         var label = document.createElement("div");
         label.className = "rep-label";
-        label.textContent = name + " \xB7 Support";
+        label.textContent = assistant ? name : name + " \xB7 Support";
         list.append(label);
         lastRep = name;
       }
@@ -2754,7 +3125,14 @@ function fillMessages(messages){
     row.append(bubble);
     list.append(row);
   });
-  var ended = chatEnded || hub.conversationEnded === true || hub.conversationStatus === "ended";
+  if (!messages.length) {
+    var empty = document.createElement("p");
+    empty.className = "preview open";
+    var vendor = hub.vendorName || "the team";
+    empty.textContent = "No messages yet. Write to " + vendor + " below.";
+    list.append(empty);
+  }
+  var ended = !assistant && (chatEnded || hub.conversationEnded === true || hub.conversationStatus === "ended");
   if (ended) {
     var line = document.createElement("div");
     line.className = "ended";
@@ -2762,7 +3140,6 @@ function fillMessages(messages){
     line.textContent = when ? "Chat ended \xB7 " + when : "Chat ended";
     list.append(line);
   }
-  appendPrevious(list, hub);
 }
 function appendBubble(list, message){
   var mine = message.sender === "customer" || message.sender === "user";
@@ -2788,12 +3165,21 @@ function appendPrevious(list, hub){
     var row = document.createElement("button");
     row.type = "button";
     row.className = "past";
+    var top = document.createElement("div");
+    top.className = "past-top";
     var title = document.createElement("strong");
     title.textContent = who;
+    top.append(title);
+    if (when) {
+      var time = document.createElement("span");
+      time.className = "when";
+      time.textContent = when;
+      top.append(time);
+    }
     var line = document.createElement("div");
     line.className = "preview";
-    line.textContent = (preview || "No messages") + (when ? " \xB7 " + when : "");
-    row.append(title, line);
+    line.textContent = preview || "No messages";
+    row.append(top, line);
     row.onclick = function(){
       openPast = openPast === chat.id ? "" : String(chat.id || "");
       fillMessages((readHub() || {}).messages || []);
@@ -2969,20 +3355,17 @@ function fillAccount(account){
     list.append(empty);
   }
 }
+var askingPerson = false;
 function askPerson(item){
   var question = String(item && item.question || "").trim();
   if (!question) return;
-  setActionStatus("Sending\u2026");
-  return callServerTool("hub_card", {
-    action: "send",
-    text: question,
-    clientMessageId: "ask-" + String(item.id || "")
-  }).then(function(result){
-    if (!result || result.isError) throw new Error("send");
-    setActionStatus("Sent to the team.");
-  }).catch(function(){
-    setActionStatus("That didn't send. Try again.");
-  });
+  var answer = String(item && item.answer || "").trim();
+  askingPerson = true;
+  chatMode = "live";
+  show("messages");
+  var input = el("hub-composer");
+  if (input) input.value = answer ? question + "\\n\\n" + answer : question;
+  return startChat();
 }
 function fillQuestions(rows){
   var list = el("questions-list");
@@ -2998,9 +3381,18 @@ function fillQuestions(rows){
     return row && String(row.question || "").trim();
   }) : [];
   if (!items.length) {
-    var empty = document.createElement("p");
-    empty.className = "lock";
-    empty.textContent = "No questions yet.";
+    var empty = document.createElement("div");
+    empty.className = "empty-row";
+    var mark = document.createElement("span");
+    mark.className = "empty-ico q";
+    var copy = document.createElement("div");
+    var head = document.createElement("strong");
+    head.textContent = "No questions yet.";
+    var sub = document.createElement("span");
+    sub.className = "sub-line";
+    sub.textContent = "Questions you ask the team show up here.";
+    copy.append(head, sub);
+    empty.append(mark, copy);
     list.append(empty);
     return;
   }
@@ -3045,9 +3437,8 @@ function render(){
     el("hub-title").textContent = vendor + " support";
     el("hub-mark").textContent = vendor.charAt(0).toUpperCase();
   }
-  var names = availableNames(hub);
-  var online = names.length > 0;
-  paintPeople(names, online);
+  paintPeople(hub);
+  var online = availableNames(hub).length > 0 || (hub.teamOnline === true && Boolean(hub.teamName));
   el("hub-status-label").textContent = online ? "Usually replies in a few minutes" : "Replies in a few hours";
   fillFeed(hub.inbox || [], hub.attention || null);
   fillSuggestions(hub.suggestions || [], vendor);
@@ -3121,6 +3512,14 @@ function stopMessagePoll(){
     pollTimer = null;
   }
 }
+var cardRefreshTimer = null;
+function scheduleCardRefresh(){
+  if (cardRefreshTimer) return;
+  cardRefreshTimer = setInterval(function(){
+    if (document.hidden) return;
+    return refreshHub();
+  }, 30000);
+}
 function scheduleMessagePoll(){
   var hub = readHub() || {};
   if (chatEnded || hub.conversationEnded || hub.conversationStatus === "ended" || !hub.conversationId || pollTimer) return;
@@ -3177,16 +3576,38 @@ function applySend(next){
   if (!next) return;
   var kept = readHub() || {};
   if (next.conversationId) kept.conversationId = next.conversationId;
-  if (next.conversationStatus) kept.conversationStatus = next.conversationStatus;
+  kept.conversationStatus = next.conversationStatus || null;
+  kept.conversationEndedAt = next.conversationEndedAt || null;
+  kept.conversationEnded = next.conversationStatus === "ended";
+  kept.attention = next.attention || null;
   if (next.messages) kept.messages = next.messages;
+  if (next.assistantMessages) kept.assistantMessages = next.assistantMessages;
+  if (next.assistantName) kept.assistantName = next.assistantName;
   if (next.previousChats) kept.previousChats = next.previousChats;
   if (next.availableNames) kept.availableNames = next.availableNames;
   if (next.representativeName) kept.representativeName = next.representativeName;
-  if (next.attention) kept.attention = next.attention;
   if (next.tabs) kept.tabs = next.tabs;
+  if (next.view) kept.view = next.view;
   hostHub = kept;
   localMessages = [];
   syncThread(kept);
+  replyQuote = "";
+  draftText = "";
+  draftClientId = "";
+  stopMessagePoll();
+  if (!chatEnded && chatMode !== "assistant") {
+    pullMessages();
+    scheduleMessagePoll();
+  } else if (!chatEnded) {
+    scheduleMessagePoll();
+  }
+}
+function clientIdFor(value){
+  if (value !== draftText || !draftClientId) {
+    draftText = value;
+    draftClientId = "hub-" + Date.now();
+  }
+  return draftClientId;
 }
 function startChat(){
   var input = el("hub-composer");
@@ -3196,13 +3617,31 @@ function startChat(){
   var feed = currentView() === "inbox";
   var existing = hub.conversationId;
   var ended = chatEnded || hub.conversationEnded === true || hub.conversationStatus === "ended";
+  var outgoing = replyQuote ? "Re: " + replyQuote + "\\n\\n" + value : value;
+  var clientId = clientIdFor(outgoing);
   setActionStatus("Sending\u2026");
-  var sent = existing && !ended
+  var assistantChat = chatMode === "assistant" && currentView() === "messages";
+  var sent = assistantChat
+    ? callServerTool("hub_card", {
+        action: "send",
+        text: outgoing,
+        clientMessageId: clientId,
+        counterpart: "assistant"
+      }).then(function(result){
+        if (!result || result.isError) throw new Error("send");
+        if (input) input.value = "";
+        applySend(toolResult(result));
+        render();
+        show("messages");
+        setActionStatus("Sent in this chat.");
+        askingPerson = false;
+      })
+    : existing && !ended
     ? callServerTool("decline_assistance", {
         action: "send_message",
         conversation_id: existing,
-        text: value,
-        client_message_id: "hub-" + Date.now()
+        text: outgoing,
+        client_message_id: clientId
       }).then(function(result){
         if (!result || result.isError) throw new Error("send");
         return callServerTool("decline_assistance", {
@@ -3212,14 +3651,19 @@ function startChat(){
         });
       }).then(function(result){
         if (input) input.value = "";
+        replyQuote = "";
+        draftText = "";
+        draftClientId = "";
+        paintQuote();
         var bag = (result && result.structuredContent) || result || {};
         paintThread(bag.messages || [], bag.cursor);
-        setActionStatus(feed ? "Sent to the team." : "Sent in this chat.");
+        setActionStatus(feed || askingPerson ? "Sent to the team." : "Sent in this chat.");
+        askingPerson = false;
       })
     : callServerTool("hub_card", {
         action: "send",
-        text: value,
-        clientMessageId: "hub-" + Date.now()
+        text: outgoing,
+        clientMessageId: clientId
       }).then(function(result){
         if (!result || result.isError) throw new Error("send");
         if (input) input.value = "";
@@ -3227,10 +3671,12 @@ function startChat(){
         render();
         if (feed) show("inbox");
         else show("messages");
-        setActionStatus(feed ? "Sent to the team." : "Sent in this chat.");
+        setActionStatus(feed || askingPerson ? "Sent to the team." : "Sent in this chat.");
+        askingPerson = false;
       });
   return Promise.resolve(sent).catch(function(){
     if (input) input.value = value;
+    askingPerson = false;
     setActionStatus("That didn't send. Try again.");
   });
 }
@@ -3264,6 +3710,11 @@ function watchSize(){
   tellHostSize();
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(tellHostSize);
 }
+function refreshFailed(failed){
+  var notice = el("hub-refresh-error");
+  if (notice) notice.hidden = !failed;
+  watchSize();
+}
 function refreshHub(){
   var view = currentView();
   return callServerTool("hub_card", { action: "refresh", view: view }).then(function(result){
@@ -3271,16 +3722,30 @@ function refreshHub(){
     var hub = toolResult(result);
     if (!hub) throw new Error("refresh");
     hub.view = view;
+    refreshFailed(false);
     applyHost(hub);
   }).catch(function(){
-    setActionStatus("Couldn't refresh. Try again.");
+    refreshFailed(true);
   });
 }
 TABS.forEach(function(tab){
-  el("tab-" + tab).onclick = function(){ show(tab); };
+  el("tab-" + tab).onclick = function(){
+    if (tab === "messages") chatMode = "live";
+    show(tab);
+  };
 });
+el("hub-speak-live").onclick = function(){
+  chatMode = "live";
+  show("messages");
+};
+el("hub-ask-assistant").onclick = function(){
+  chatMode = "assistant";
+  replyQuote = "";
+  show("messages");
+};
 el("hub-account").onclick = function(){ show("account"); };
 el("hub-refresh").onclick = function(){ return refreshHub(); };
+el("hub-retry").onclick = function(){ return refreshHub(); };
 el("hub-send").onclick = function(){ return startChat(); };
 var composer = el("hub-composer");
 if (composer && composer.addEventListener) {
@@ -3290,7 +3755,6 @@ if (composer && composer.addEventListener) {
     return startChat();
   });
 }
-render();
 window.addEventListener("message", function(event){
   var msg = event && event.data;
   if (!msg || msg.jsonrpc !== "2.0") return;
@@ -3305,6 +3769,7 @@ window.addEventListener("openai:set_globals", function(event){
   var globals = event && event.detail && event.detail.globals;
   if (globals && globals.toolOutput) applyHost(globals.toolOutput);
 });
+render();
 rpc("ui/initialize", {
   protocolVersion: "2026-01-26",
   appCapabilities: { availableDisplayModes: ["inline"] }
@@ -3312,10 +3777,12 @@ rpc("ui/initialize", {
   hostReady = true;
   try { parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized" }, "*"); } catch (e) {}
   watchSize();
+  scheduleCardRefresh();
   scheduleMessagePoll();
   flushQueue();
 }).catch(function(){
   hostReady = true;
+  scheduleCardRefresh();
   scheduleMessagePoll();
   flushQueue();
 });
@@ -3328,11 +3795,33 @@ rpc("ui/initialize", {
 function clean(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
+function newestNote(result) {
+  const rows = Array.isArray(result.inbox) ? result.inbox : [];
+  const notes = rows.flatMap((row, index) => {
+    if (!row || typeof row !== "object") return [];
+    const item = row;
+    const kind = clean(item.kind);
+    if (kind && kind !== "note" && kind !== "renewal") return [];
+    if (item.readAt) return [];
+    if (!clean(item.title) && !clean(item.body)) return [];
+    return [{ item, index }];
+  });
+  notes.sort((a, b) => {
+    const at = clean(b.item.createdAt).localeCompare(clean(a.item.createdAt));
+    return at || b.index - a.index;
+  });
+  return notes[0]?.item ?? null;
+}
 function hubOpenText(result) {
   const vendor = clean(result.vendorName) || "your vendor";
   const selected = clean(result.view) || "inbox";
   const screen = selected === "inbox" ? "feed" : selected;
-  return `${vendor} hub is open on ${screen}. The card shows the rest. Do not list the notes, suggestions, messages, or usage.`;
+  const base = `${vendor} hub is open on ${screen}. The card shows the rest. Do not list the notes, suggestions, messages, or usage.`;
+  const item = newestNote(result);
+  if (!item) return base;
+  const spoken = [clean(item.title), clean(item.body)].filter(Boolean).join(". ");
+  if (!spoken) return base;
+  return `${base} You may read this one note aloud: ${spoken}`;
 }
 var OPEN_HUB_DESCRIPTION = "Opens the customer hub. Feed, Messages, and Suggestions stay available. view selects the screen: inbox (Feed), messages, suggestions, usage, account, or questions. view decline records that the customer said no and contacts nobody. Call this when the customer asks to open their hub or says yes to a hub invitation. Opening it contacts nobody.";
 function registerHubTool(server, ctx) {
@@ -3418,7 +3907,7 @@ function registerHubTool(server, ctx) {
       const path = action === "seen" ? "/v1/hubs/seen" : "/v1/hubs/dismiss";
       const saved = await serviceFetch(ctx.baseUrl, ctx.options.apiKey, path, {
         method: "POST",
-        body: { ...identity, itemIds }
+        body: { ...identity, itemIds, messagesSeen: args?.messagesSeen === true }
       });
       if (saved == null) {
         return {
@@ -3440,7 +3929,8 @@ function registerHubTool(server, ctx) {
           ...identity,
           text: message,
           clientMessageId: String(args?.clientMessageId ?? "").slice(0, 80),
-          view: "messages"
+          view: "messages",
+          ...args?.counterpart === "assistant" ? { counterpart: "assistant" } : {}
         }
       });
       if (saved == null || saved.status === "off" || saved.status === "empty" || saved.error) {
@@ -3490,7 +3980,9 @@ function registerHubTool(server, ctx) {
         action: z.enum(["send", "seen", "dismiss", "refresh"]),
         text: z.string().optional(),
         clientMessageId: z.string().optional(),
+        counterpart: z.enum(["assistant"]).optional(),
         itemIds: z.array(z.string()).optional(),
+        messagesSeen: z.boolean().optional(),
         view: z.string().optional()
       }),
       annotations: {
@@ -5631,7 +6123,11 @@ function install(server, options) {
   const baseUrl = (options.baseUrl ?? "http://127.0.0.1:8787").replace(/\/$/, "");
   void serviceFetch(baseUrl, options.apiKey, "/v1/install", {
     method: "POST",
-    body: { source: options.source ?? "mcp", sdkVersion: SDK_VERSION }
+    body: {
+      source: options.source ?? "mcp",
+      sdkVersion: SDK_VERSION,
+      hubs: options.hubs === true
+    }
   });
   const readIdentity = (context) => {
     const identity = identifyFromContext(context, {

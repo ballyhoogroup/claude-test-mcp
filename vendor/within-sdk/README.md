@@ -41,6 +41,10 @@ server.registerTool(
 );
 ```
 
+- **`hubs: true`** registers `open_hub` and the customer hub. Leave it off and the server keeps
+  today's tools. A hub invitation is attached only to a tool that went through `wrapTool`.
+  `get_vendor_answer`, `confirm_assistance`, `decline_assistance`, `report_void`, and `open_hub`
+  do not carry one. The vendor still has to turn hubs on in the console.
 - **Node.js 20 or newer.** `baseUrl` must be a Within URL the MCP process can reach.
 - **Zod 3.25+ or 4.x, yours.** Zod is a peer dependency. The SDK adds an optional `context` field
   to each wrapped tool in the same Zod your schema uses (`zod/v3` or `zod/v4`). Its own tools'
