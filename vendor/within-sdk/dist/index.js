@@ -1891,7 +1891,8 @@ function hubHtml(payload) {
   button { cursor: pointer; }
   button:focus-visible, input:focus-visible { outline: 2px solid ${BRAND}; outline-offset: 2px; }
   .ico::before, button.icon::before, .feed-actions .send::before, #hub-footer::before,
-  #usage-list .lock::before, .notice::before, .empty-art::before, .empty-row .empty-ico::before {
+  #usage-list .lock::before, .notice::before, .empty-art::before, .empty-row .empty-ico::before,
+  .sq::before {
     content: "";
     display: inline-block;
     flex: none;
@@ -1924,7 +1925,8 @@ function hubHtml(payload) {
   }
   .who > div:last-child { min-width: 0; }
   h2 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-  .sub { margin: 2px 0 0; color: ${MUTED}; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { margin: 2px 0 0; color: ${MUTED}; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+  .sub:empty { display: none; }
   .people { display: flex; align-items: center; flex: none; gap: 8px; }
   .person { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .person-copy { display: flex; flex-direction: column; min-width: 0; }
@@ -2015,8 +2017,9 @@ function hubHtml(payload) {
     background: #fff; color: ${AMBER};
     font-size: 12px; font-weight: 600;
   }
-  .scroll { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 14px; }
-  #message-list { margin-top: auto; }
+  /* When the host holds the frame shorter than the content, the open tab scrolls under the composer. */
+  .scroll { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 14px; overflow-y: auto; }
+  .scroll > div { flex: none; }
   .kicker {
     margin: 12px 0 6px;
     color: ${MUTED};
@@ -2070,10 +2073,23 @@ function hubHtml(payload) {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .preview.clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .preview.open {
+    display: block;
     white-space: pre-wrap;
     overflow: visible;
     text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+  button.more-line {
+    background: none; border: 0; padding: 0; margin-top: 4px;
+    color: ${BRAND}; font-size: 12px; font-weight: 600;
   }
   .quote {
     margin: 0 0 8px;
@@ -2089,6 +2105,7 @@ function hubHtml(payload) {
     border: 0;
     border-radius: 9px;
     background: #EAF3ED; color: ${BRAND};
+    --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z'/%3E%3C/svg%3E");
   }
   .mark {
     flex: none;
@@ -2104,6 +2121,7 @@ function hubHtml(payload) {
   }
   .feed-row .av { width: 32px; height: 32px; font-size: 13px; border: 0; }
   .feed-row.tap { cursor: pointer; }
+  .feed-row.unread { background: #fff; border-color: #CFE3D6; }
   .unread-dot {
     width: 8px; height: 8px; border-radius: 999px;
     background: ${BRAND}; flex: none;
@@ -2160,6 +2178,18 @@ function hubHtml(payload) {
   .bubble.mine { background: ${BRAND}; color: #fff; border-bottom-right-radius: 4px; }
   .bubble.theirs { background: ${THEIRS}; color: ${INK}; border-bottom-left-radius: 4px; }
   .sug-line { justify-content: space-between; gap: 12px; }
+  .sug-line button.quiet {
+    height: 32px; padding: 0 12px; flex: none;
+    border: 1px solid ${BRAND}; border-radius: 8px;
+    background: #fff; font-size: 13px;
+  }
+  .sug-line button.quiet:hover { background: #EEF6F1; }
+  .waiting { margin: 8px 0 0; color: ${MUTED}; font-size: 12px; line-height: 16px; text-align: right; }
+  button.earlier {
+    display: block; margin: 0 0 10px; padding: 0;
+    background: none; border: 0;
+    color: ${BRAND}; font-size: 13px; font-weight: 600;
+  }
   button.quiet { color: ${BRAND}; font-weight: 600; white-space: nowrap; }
   button.dismiss {
     background: none; border: 0; padding: 0; margin-top: 6px;
@@ -2262,22 +2292,25 @@ function hubHtml(payload) {
     font-size: 12px;
     line-height: 16px;
   }
-  .composer-meta:has(#hub-end:not([hidden])) { justify-content: space-between; }
+  .composer-meta:has(#hub-end:not([hidden])), .composer-meta:has(#hub-end-confirm:not([hidden])) { justify-content: space-between; }
+  .end-confirm { display: inline-flex; align-items: center; gap: 8px; color: ${INK}; }
   #hub-footer { display: inline-flex; align-items: center; gap: 6px; --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='11' width='16' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3C/svg%3E"); }
   #hub-footer::before { width: 12px; height: 12px; }
   button.link { color: ${MUTED}; font-weight: 500; font-size: 12px; }
   button.end {
     margin: 0;
-    background: none;
-    border: 0;
-    padding: 4px 0;
-    color: ${MUTED};
+    background: #fff;
+    border: 1px solid #DADBD4;
+    border-radius: 8px;
+    padding: 5px 10px;
+    color: ${INK};
     font-size: 12px;
     font-weight: 600;
     line-height: 16px;
     white-space: nowrap;
   }
-  button.end:hover { color: ${INK}; }
+  button.end:hover { background: #F7F7F4; }
+  button.end.sure { border-color: #B4472F; color: #B4472F; }
   .card-foot {
     display: flex;
     justify-content: space-between;
@@ -2313,7 +2346,18 @@ function hubHtml(payload) {
   .usage-row .name-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
   .track { display: block; height: 6px; margin-top: 4px; border-radius: 999px; background: #EEEDE6; }
   .bar { display: block; height: 6px; border-radius: 999px; background: ${BRAND}; }
-  #questions-list { margin-top: 20px; padding-top: 18px; border-top: 1px solid ${LINE}; }
+  #usage-list, #questions-list { margin-top: 20px; padding-top: 18px; border-top: 1px solid ${LINE}; }
+  .bar.warn { background: #C98A1B; }
+  .limit-note {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    margin-top: 6px; color: ${AMBER}; font-size: 12px; line-height: 16px;
+  }
+  @media (max-width: 520px) {
+    .person-copy { display: none; }
+    .tabs button { padding: 0 4px; font-size: 12px; }
+    .tiles { flex-wrap: wrap; }
+    .tile { flex: 1 1 40%; }
+  }
   .lock { margin: 12px 0 0; color: ${MUTED}; font-size: 12px; line-height: 16px; }
   #usage-list .lock {
     display: flex; gap: 10px; align-items: flex-start;
@@ -2326,6 +2370,7 @@ function hubHtml(payload) {
     --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z'/%3E%3Cpath d='M9 12l2 2 4-4'/%3E%3C/svg%3E");
   }
   #usage-list .lock::before { color: ${BRAND}; margin-top: 1px; }
+  .empty-art.feed, .empty-art.chat { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E"); }
   .empty-art.sug { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 21h4'/%3E%3Cpath d='M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z'/%3E%3C/svg%3E"); }
   .empty-ico.q { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); }
 </style>
@@ -2337,37 +2382,35 @@ function hubHtml(payload) {
         <div class="logo" id="hub-mark">W</div>
         <div>
           <h2 id="hub-title">Your support</h2>
-          <p class="sub" id="hub-status-label">Replies in a few hours</p>
+          <p class="sub" id="hub-status-label"></p>
         </div>
       </div>
       <div class="people" id="hub-people"></div>
       <button id="hub-refresh" class="icon" type="button" aria-label="Refresh"></button>
     </div>
-    <div class="tabs" id="tabs">
-      <button id="tab-inbox" type="button">Feed<span id="badge-inbox" class="badge" hidden></span></button>
-      <button id="tab-messages" type="button">Messages<span id="badge-messages" class="badge" hidden></span></button>
-      <button id="tab-suggestions" type="button">Suggestions<span id="badge-suggestions" class="badge" hidden></span></button>
-      <button id="tab-usage" type="button">Usage<span id="badge-usage" class="badge" hidden></span></button>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Hub sections">
+      <button id="tab-inbox" type="button" role="tab" aria-controls="panel-inbox" aria-selected="true">Feed<span id="badge-inbox" class="badge" hidden></span></button>
+      <button id="tab-messages" type="button" role="tab" aria-controls="panel-messages" aria-selected="false">Messages<span id="badge-messages" class="badge" hidden></span></button>
+      <button id="tab-suggestions" type="button" role="tab" aria-controls="panel-suggestions" aria-selected="false">Suggestions<span id="badge-suggestions" class="badge" hidden></span></button>
+      <button id="tab-account" type="button" role="tab" aria-controls="panel-account" aria-selected="false">Account</button>
     </div>
     <div id="hub-refresh-error" class="notice" role="status" hidden>
       <span>Couldn't load the latest.</span>
       <button id="hub-retry" type="button">Retry</button>
     </div>
-    <div class="scroll" id="panel-inbox">
+    <div class="scroll" id="panel-inbox" role="tabpanel" aria-labelledby="tab-inbox">
       <div id="inbox-list"></div>
     </div>
-    <div class="scroll" id="panel-messages" hidden>
-      <div id="message-list"></div>
+    <div class="scroll" id="panel-messages" role="tabpanel" aria-labelledby="tab-messages" hidden>
+      <div id="message-list" aria-live="polite"></div>
     </div>
-    <div class="scroll" id="panel-suggestions" hidden>
+    <div class="scroll" id="panel-suggestions" role="tabpanel" aria-labelledby="tab-suggestions" hidden>
       <div id="suggestion-list"></div>
     </div>
-    <div class="scroll" id="panel-usage" hidden>
+    <div class="scroll" id="panel-account" role="tabpanel" aria-labelledby="tab-account" hidden>
+      <div id="account-list"></div>
       <div id="usage-list"></div>
       <div id="questions-list"></div>
-    </div>
-    <div class="scroll" id="panel-account" hidden>
-      <div id="account-list"></div>
     </div>
     <div id="hub-answer" class="answer" hidden></div>
     <div id="hub-composer-row">
@@ -2387,11 +2430,16 @@ function hubHtml(payload) {
       <div class="composer-meta">
         <span id="hub-footer">Nothing is shared until you send it.</span>
         <button id="hub-end" class="end" type="button" hidden>End chat</button>
+        <span id="hub-end-confirm" class="end-confirm" hidden>
+          <span>End this chat?</span>
+          <button id="hub-end-yes" class="end sure" type="button">End chat</button>
+          <button id="hub-end-no" class="end" type="button">Keep chatting</button>
+        </span>
       </div>
     </div>
-    <p id="hub-action-status" class="hint"></p>
+    <p id="hub-action-status" class="hint" role="status" aria-live="polite"></p>
     <div class="card-foot" id="hub-links">
-      <button id="hub-account" class="link" type="button">Account</button>
+      <span></span>
       <span class="powered">Powered by Within</span>
     </div>
   </div>
@@ -2401,8 +2449,15 @@ var rpcId = 1;
 var feedExpanded = false;
 var openPast = "";
 var chatMode = "live";
-var TABS = ["inbox", "messages", "suggestions", "usage"];
-var SCREENS = ["inbox", "messages", "suggestions", "usage", "account"];
+var showPast = false;
+var endConfirm = false;
+var TABS = ["inbox", "messages", "suggestions", "account"];
+var SCREENS = TABS;
+// Usage and the customer's questions live on Account.
+function screenOf(view){
+  if (view === "usage" || view === "questions") return "account";
+  return SCREENS.indexOf(view) >= 0 ? view : "inbox";
+}
 function readHub(){
   if (hostHub) return hostHub;
   try {
@@ -2433,13 +2488,17 @@ function syncThread(hub){
 }
 function el(id){ return document.getElementById(id); }
 function show(name){
-  if (name === "questions") name = "usage";
+  name = screenOf(name);
+  if (name !== "messages") endConfirm = false;
   for (var i = 0; i < SCREENS.length; i++) {
     var screen = SCREENS[i];
     var panel = el("panel-" + screen);
     if (panel) panel.hidden = screen !== name;
     var tab = el("tab-" + screen);
-    if (tab) tab.classList.toggle("on", screen === name);
+    if (tab) {
+      tab.classList.toggle("on", screen === name);
+      if (tab.setAttribute) tab.setAttribute("aria-selected", screen === name ? "true" : "false");
+    }
   }
   var feed = name === "inbox";
   var chatting = name === "messages";
@@ -2459,6 +2518,14 @@ function show(name){
   watchSize();
 }
 var seenIds = {};
+// Rows that were unread when this card first showed them. Showing a row marks it read on the
+// server straight away, so without this the dot would vanish before anyone saw it.
+var newIds = {};
+function isNew(item){
+  if (!item) return false;
+  if (!item.readAt && item.id) newIds[item.id] = true;
+  return !item.readAt || Boolean(item.id && newIds[item.id]);
+}
 function reportSeen(ids){
   var fresh = [];
   (ids || []).forEach(function(id){
@@ -2517,6 +2584,7 @@ function badge(id, count){
   var n = Number(count) || 0;
   node.hidden = n <= 0;
   node.textContent = n > 0 ? String(n) : "";
+  if (node.setAttribute) node.setAttribute("aria-label", n > 0 ? n + " unread" : "");
 }
 function currentView(){
   for (var i = 0; i < SCREENS.length; i++) {
@@ -2795,11 +2863,30 @@ function syncComposer(view){
   }
   var end = el("hub-end");
   var open = view === "messages" && chatMode !== "assistant" && Boolean(hub.conversationId) && !ended;
+  if (!open) endConfirm = false;
   if (end) {
-    end.hidden = !open;
+    end.hidden = !open || endConfirm;
     end.disabled = !open;
-    end.onclick = function(){ return endChat(); };
+    end.onclick = function(){
+      endConfirm = true;
+      syncComposer(currentView());
+      watchSize();
+    };
   }
+  var confirm = el("hub-end-confirm");
+  if (confirm) confirm.hidden = !(open && endConfirm);
+  var yes = el("hub-end-yes");
+  if (yes) yes.onclick = function(){
+    endConfirm = false;
+    syncComposer(currentView());
+    return endChat();
+  };
+  var no = el("hub-end-no");
+  if (no) no.onclick = function(){
+    endConfirm = false;
+    syncComposer(currentView());
+    watchSize();
+  };
 }
 function feedMark(item){
   var kind = String(item.kind || "note");
@@ -2820,7 +2907,7 @@ function fillFeed(items, attention){
   var vendor = (readHub() || {}).vendorName || "the team";
   var intro = document.createElement("p");
   intro.className = "kicker";
-  intro.textContent = "Notes and updates from " + vendor + ". Tap a note to reply.";
+  intro.textContent = "Notes and updates from " + vendor + ".";
   list.append(intro);
   if (attention && attention.quote) {
     var bar = document.createElement("div");
@@ -2851,7 +2938,9 @@ function fillFeed(items, attention){
       lastGroup = group;
     }
     var row = document.createElement("div");
+    var fresh = isNew(item);
     row.className = "feed-row";
+    if (fresh) row.classList.add("unread");
     var icon = feedMark(item);
     var copy = document.createElement("div");
     copy.className = "feed-copy";
@@ -2862,34 +2951,54 @@ function fillFeed(items, attention){
     var when = document.createElement("span");
     when.className = "when";
     when.textContent = relTime(item.createdAt || item.at || "");
-    if (!item.readAt) {
+    if (fresh) {
       var dot = document.createElement("span");
       dot.className = "unread-dot";
+      if (dot.setAttribute) dot.setAttribute("aria-label", "New");
       line.append(dot);
     }
     line.append(strong, when);
     var open = openNoteId && item.id && openNoteId === item.id;
+    var body = rowPreview(item);
     var preview = document.createElement("div");
-    preview.className = open ? "preview open" : "preview";
-    preview.textContent = rowPreview(item);
+    preview.className = open ? "preview open" : "preview clamp";
+    preview.textContent = body;
     copy.append(line, preview);
+    var toggle = function(event){
+      if (event && event.stopPropagation) event.stopPropagation();
+      openNoteId = open ? "" : String(item.id || "");
+      fillFeed((readHub() || {}).inbox || [], (readHub() || {}).attention || null);
+      watchSize();
+    };
+    // Three lines hold about this much; a shorter note has nothing more to show.
+    if (item.id && (body.length > 180 || body.indexOf("\\n") >= 0)) {
+      var more = document.createElement("button");
+      more.type = "button";
+      more.className = "more-line";
+      more.textContent = open ? "Show less" : "Show more";
+      if (more.setAttribute) more.setAttribute("aria-expanded", open ? "true" : "false");
+      more.onclick = toggle;
+      copy.append(more);
+    }
     var kind = String(item.kind || "note");
     if (kind === "note" || kind === "renewal") copy.append(noteActions(item, row));
     row.append(icon, copy);
-    if (kind === "note" || kind === "renewal") {
+    if (item.id) {
       row.style.cursor = "pointer";
-      row.onclick = function(){
-        openNoteId = open ? "" : String(item.id || "");
-        fillFeed((readHub() || {}).inbox || [], (readHub() || {}).attention || null);
-        watchSize();
-      };
+      row.onclick = toggle;
     }
     list.append(row);
   });
   if (!rows.length && !(attention && attention.quote)) {
-    var none = document.createElement("p");
-    none.className = "preview";
-    none.textContent = "Nothing new.";
+    var none = document.createElement("div");
+    none.className = "empty";
+    var art = document.createElement("span");
+    art.className = "empty-art feed";
+    var noneHead = document.createElement("strong");
+    noneHead.textContent = "Nothing new";
+    var noneBody = document.createElement("p");
+    noneBody.textContent = "Notes, renewal reminders and updates from " + vendor + " show up here.";
+    none.append(art, noneHead, noneBody);
     list.append(none);
   }
   if (!feedExpanded && rows.length > 4) {
@@ -2933,27 +3042,16 @@ function httpsLink(value){
 function noteActions(item, row){
   var actions = document.createElement("div");
   actions.className = "note-actions";
+  // One reply button. The rep's own label names it when they wrote one.
   var reply = document.createElement("button");
   reply.type = "button";
   reply.className = "quiet";
-  reply.textContent = "Reply";
+  reply.textContent = String(item.actionLabel || "").trim() || "Reply";
   reply.onclick = function(event){
     if (event && event.stopPropagation) event.stopPropagation();
     return beginReply(item);
   };
   actions.append(reply);
-  var actionLabel = String(item.actionLabel || "").trim();
-  if (actionLabel) {
-    var primary = document.createElement("button");
-    primary.type = "button";
-    primary.className = "quiet";
-    primary.textContent = actionLabel;
-    primary.onclick = function(event){
-      if (event && event.stopPropagation) event.stopPropagation();
-      return notePrimary(item);
-    };
-    actions.append(primary);
-  }
   var link = httpsLink(item.secondaryUrl);
   if (item.secondaryLabel && link) {
     var secondary = document.createElement("button");
@@ -2992,9 +3090,6 @@ function dismissItem(item, wrap){
     watchSize();
   });
 }
-function notePrimary(item){
-  return beginReply(item);
-}
 function sendAgain(text){
   chatMode = "live";
   var input = el("hub-composer");
@@ -3003,7 +3098,10 @@ function sendAgain(text){
   return startChat();
 }
 function suggestionLabel(item){
-  return item && item.prompt ? "Set up" : "Show me";
+  if (!item || !item.prompt) return "Show me";
+  // "Show me" is what a suggestion with nothing to add says, so it never names this button.
+  var label = String(item.actionLabel || "").trim();
+  return label && !/^show me$/i.test(label) ? label : "Set up";
 }
 function fillSuggestions(items, vendor){
   var list = el("suggestion-list");
@@ -3017,6 +3115,7 @@ function fillSuggestions(items, vendor){
     wrap.className = "sug-row";
     var icon = document.createElement("span");
     icon.className = "sq";
+    if (icon.setAttribute) icon.setAttribute("aria-hidden", "true");
     var copy = document.createElement("div");
     copy.className = "sug-copy";
     var line = document.createElement("div");
@@ -3028,11 +3127,16 @@ function fillSuggestions(items, vendor){
     action.className = "quiet";
     action.textContent = suggestionLabel(item);
     action.onclick = function(){
-      if (/^set up$/i.test(String(action.textContent || "")) && item.prompt) {
-        return postToChat(String(item.prompt));
-      }
+      if (item.prompt) return postToChat(String(item.prompt));
       return showInCard(item.title, String(item.body || ""));
     };
+    if (isNew(item)) {
+      var fresh = document.createElement("span");
+      fresh.className = "unread-dot";
+      if (fresh.setAttribute) fresh.setAttribute("aria-label", "New");
+      line.append(fresh);
+    }
+    title.style.flex = "1";
     line.append(title, action);
     var reason = document.createElement("div");
     reason.className = "reason";
@@ -3081,8 +3185,9 @@ function fillMessages(messages){
   var assistant = chatMode === "assistant";
   messages = assistant ? (hub.assistantMessages || []) : (messages || []).concat(localMessages);
   if (!assistant) appendPrevious(list, hub);
-  var lastStamp = "";
+  var lastAt = null;
   var lastRep = "";
+  var lastSpoken = null;
   messages.forEach(function(message){
     if (!message) return;
     if (message.sender === "system") {
@@ -3094,23 +3199,26 @@ function fillMessages(messages){
       lastRep = "";
       return;
     }
-    var stamp = messageStamp(message.createdAt || message.when || "");
-    if (stamp && stamp !== lastStamp) {
+    // A time is shown when the thread starts, on a new day, or after a pause of ten minutes.
+    var at = atDate(message.createdAt || message.when || "");
+    if (at && (!lastAt || !sameDay(at, lastAt) || at.getTime() - lastAt.getTime() >= 600000)) {
       var mark = document.createElement("div");
       mark.className = "stamp";
-      mark.textContent = stamp;
+      mark.textContent = messageStamp(message.createdAt || message.when || "");
       list.append(mark);
-      lastStamp = stamp;
       lastRep = "";
     }
+    if (at) lastAt = at;
     var mine = message.sender === "customer" || message.sender === "user";
+    lastSpoken = message;
     if (!mine) {
       var name = String(message.senderName || "").trim();
       if (!assistant) name = name || String(hub.representativeName || "").trim();
       if (name && name !== lastRep) {
         var label = document.createElement("div");
         label.className = "rep-label";
-        label.textContent = assistant ? name : name + " \xB7 Support";
+        var role = assistant ? "" : roleOf(hub, name);
+        label.textContent = role ? name + " \xB7 " + role : name;
         list.append(label);
         lastRep = name;
       }
@@ -3126,13 +3234,29 @@ function fillMessages(messages){
     list.append(row);
   });
   if (!messages.length) {
-    var empty = document.createElement("p");
-    empty.className = "preview open";
+    var empty = document.createElement("div");
+    empty.className = "empty";
+    var art = document.createElement("span");
+    art.className = "empty-art chat";
+    var head = document.createElement("strong");
+    head.textContent = "No messages yet";
     var vendor = hub.vendorName || "the team";
-    empty.textContent = "No messages yet. Write to " + vendor + " below.";
+    var body = document.createElement("p");
+    body.textContent = assistant
+      ? "Ask " + assistantLabel(hub) + " below. It answers from " + vendor + "'s own material."
+      : "Write to " + vendor + " below. A person replies here.";
+    empty.append(art, head, body);
     list.append(empty);
   }
   var ended = !assistant && (chatEnded || hub.conversationEnded === true || hub.conversationStatus === "ended");
+  var lastMine = lastSpoken && (lastSpoken.sender === "customer" || lastSpoken.sender === "user");
+  if (!assistant && !ended && lastMine) {
+    var waiting = document.createElement("div");
+    waiting.className = "waiting";
+    var holder = firstName(hub.representativeName);
+    waiting.textContent = holder ? holder + " has this." : "Waiting for someone to pick it up.";
+    list.append(waiting);
+  }
   if (ended) {
     var line = document.createElement("div");
     line.className = "ended";
@@ -3154,10 +3278,19 @@ function appendBubble(list, message){
 function appendPrevious(list, hub){
   var previous = Array.isArray(hub.previousChats) ? hub.previousChats : [];
   if (!previous.length) return;
-  var head = document.createElement("div");
-  head.className = "kicker";
-  head.textContent = "Previous chats";
+  var head = document.createElement("button");
+  head.type = "button";
+  head.className = "earlier";
+  head.textContent = showPast ? "Hide earlier chats" : "View earlier chats (" + previous.length + ")";
+  if (head.setAttribute) head.setAttribute("aria-expanded", showPast ? "true" : "false");
+  head.onclick = function(){
+    showPast = !showPast;
+    if (!showPast) openPast = "";
+    fillMessages((readHub() || {}).messages || []);
+    watchSize();
+  };
   list.append(head);
+  if (!showPast) return;
   previous.forEach(function(chat){
     var who = String(chat.representativeName || "").trim() || "The team";
     var when = relTime(chat.endedAt || chat.createdAt || "");
@@ -3199,6 +3332,47 @@ function appendPrevious(list, hub){
       list.append(ended);
     }
   });
+}
+function roleOf(hub, name){
+  var key = String(name || "").trim().toLowerCase();
+  var found = "";
+  teamOf(hub).forEach(function(person){
+    if (!found && person.name.toLowerCase() === key) found = person.role;
+  });
+  return found;
+}
+function plainNumber(value){
+  try { return Number(value).toLocaleString("en-US"); }
+  catch (e) { return String(value); }
+}
+function aboutMinutes(minutes){
+  var n = Math.round(Number(minutes));
+  if (!isFinite(n) || n < 0) return "";
+  if (n < 1) return "under a minute";
+  if (n < 60) return "about " + n + " min";
+  var hours = Math.round(n / 60);
+  return "about " + hours + (hours === 1 ? " hour" : " hours");
+}
+// Who is online, and the reply time measured on this customer's own chats. Nothing is promised.
+function statusLine(hub){
+  var names = availableNames(hub).map(firstName).filter(Boolean);
+  if (!names.length && hub.teamOnline === true && hub.teamName) names = [firstName(hub.teamName)];
+  var who = "Nobody is online right now";
+  if (names.length === 1) who = names[0] + " is online";
+  if (names.length === 2) who = names[0] + " and " + names[1] + " are online";
+  if (names.length > 2) who = names[0] + " and " + (names.length - 1) + " others are online";
+  var wait = typeof hub.avgReplyMinutes === "number" ? aboutMinutes(hub.avgReplyMinutes) : "";
+  return wait ? who + " \xB7 usually replies in " + wait : who;
+}
+function askAboutLimit(row){
+  chatMode = "live";
+  replyQuote = "";
+  show("messages");
+  var input = el("hub-composer");
+  if (input) {
+    input.value = "Can we raise our " + row.name + " limit? We have used " + plainNumber(row.used) + " of " + plainNumber(row.cap) + ".";
+    if (input.focus) input.focus();
+  }
 }
 function toolWords(name){
   var words = String(name || "").replace(/_/g, " ").replace(/\\s+/g, " ").trim();
@@ -3323,7 +3497,7 @@ function fillAccount(account){
       var name = document.createElement("span");
       name.textContent = row.name;
       var count = document.createElement("span");
-      count.textContent = row.used + " / " + row.cap;
+      count.textContent = plainNumber(row.used) + " / " + plainNumber(row.cap);
       nameLine.append(name, count);
       line.append(nameLine);
       if (row.cap > 0) {
@@ -3335,8 +3509,23 @@ function fillAccount(account){
         if (width < 0) width = 0;
         if (width > 100) width = 100;
         bar.style.width = width + "%";
+        var near = row.used / row.cap >= 0.8;
+        if (near) bar.className = "bar warn";
         track.append(bar);
         line.append(track);
+        if (near) {
+          var note = document.createElement("div");
+          note.className = "limit-note";
+          var words = document.createElement("span");
+          words.textContent = row.used >= row.cap ? "Limit reached" : "Close to the limit";
+          var ask = document.createElement("button");
+          ask.type = "button";
+          ask.className = "quiet";
+          ask.textContent = "Ask about more";
+          ask.onclick = function(){ return askAboutLimit(row); };
+          note.append(words, ask);
+          line.append(note);
+        }
       }
       list.append(line);
     });
@@ -3438,8 +3627,7 @@ function render(){
     el("hub-mark").textContent = vendor.charAt(0).toUpperCase();
   }
   paintPeople(hub);
-  var online = availableNames(hub).length > 0 || (hub.teamOnline === true && Boolean(hub.teamName));
-  el("hub-status-label").textContent = online ? "Usually replies in a few minutes" : "Replies in a few hours";
+  el("hub-status-label").textContent = statusLine(hub);
   fillFeed(hub.inbox || [], hub.attention || null);
   fillSuggestions(hub.suggestions || [], vendor);
   fillMessages(hub.messages || []);
@@ -3447,8 +3635,7 @@ function render(){
   fillAccount(hub.account || {});
   fillQuestions(hub.questions || []);
   showAnswer(hub.answer || "");
-  var selected = hub.view === "questions" ? "usage" : (SCREENS.indexOf(hub.view) >= 0 ? hub.view : "inbox");
-  show(selected);
+  show(screenOf(hub.view));
   if (hostReady) scheduleMessagePoll();
 }
 function rememberCursor(messages, cursor){
@@ -3532,6 +3719,7 @@ function markChatEnded(){
   chatEnded = true;
   stopMessagePoll();
   var hub = readHub() || {};
+  endConfirm = false;
   hub.conversationEnded = true;
   hub.conversationStatus = "ended";
   if (!hub.conversationEndedAt) hub.conversationEndedAt = new Date().toISOString();
@@ -3696,8 +3884,7 @@ function outerHeight(node){
   if (!height) return 0;
   try {
     var style = window.getComputedStyle ? window.getComputedStyle(node) : null;
-    // #message-list sits at the bottom with margin-top: auto; that margin is free space, not content.
-    if (style && node.id !== "message-list") height += (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+    if (style) height += (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
   } catch (e) {}
   return height;
 }
@@ -3792,7 +3979,6 @@ el("hub-ask-assistant").onclick = function(){
   replyQuote = "";
   show("messages");
 };
-el("hub-account").onclick = function(){ show("account"); };
 el("hub-refresh").onclick = function(){ return refreshHub(); };
 el("hub-retry").onclick = function(){ return refreshHub(); };
 el("hub-send").onclick = function(){ return startChat(); };
@@ -3844,6 +4030,10 @@ rpc("ui/initialize", {
 function clean(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
+function failure(result) {
+  if (result == null) return "service_unreachable";
+  return result.error ?? result.status ?? "service_unreachable";
+}
 function newestNote(result) {
   const rows = Array.isArray(result.inbox) ? result.inbox : [];
   const notes = rows.flatMap((row, index) => {
@@ -3883,11 +4073,11 @@ function registerHubTool(server, ctx) {
       method: "POST",
       body: { ...identity, view }
     });
-    if (result == null || result.error || (typeof result.status === "number" && result.status >= 400)) {
+    if (result == null || result.error) {
       return {
         isError: true,
         content: [{ type: "text", text: "The hub could not be opened. Nothing was shared." }],
-        structuredContent: { status: "service_unreachable" }
+        structuredContent: { status: failure(result) }
       };
     }
     if (result.status === "sign_in") {
@@ -3906,6 +4096,13 @@ function registerHubTool(server, ctx) {
       return {
         content: [{ type: "text", text: "Okay. The hub stays closed." }],
         structuredContent: { status: "silenced" }
+      };
+    }
+    if (result.status !== "open") {
+      return {
+        isError: true,
+        content: [{ type: "text", text: "The hub could not be opened. Nothing was shared." }],
+        structuredContent: { status: failure(result) }
       };
     }
     const meta = resourceMeta(HUB_RESOURCE);
@@ -3958,11 +4155,11 @@ function registerHubTool(server, ctx) {
         method: "POST",
         body: { ...identity, itemIds, messagesSeen: args?.messagesSeen === true }
       });
-      if (saved == null) {
+      if (saved == null || saved.error) {
         return {
           isError: true,
           content: [{ type: "text", text: "The hub could not save that." }],
-          structuredContent: { status: "service_unreachable" }
+          structuredContent: { status: failure(saved) }
         };
       }
       return {
@@ -3982,11 +4179,17 @@ function registerHubTool(server, ctx) {
           ...args?.counterpart === "assistant" ? { counterpart: "assistant" } : {}
         }
       });
-      if (saved == null || saved.status === "off" || saved.status === "empty" || saved.error) {
+      if (saved == null || saved.error || saved.status !== "open") {
+        const signIn = saved?.status === "sign_in" && !saved.error;
         return {
           isError: true,
-          content: [{ type: "text", text: "That didn't send. Try again." }],
-          structuredContent: { status: saved?.status ?? saved?.error ?? "service_unreachable" }
+          content: [
+            {
+              type: "text",
+              text: signIn ? "Sign in to send that." : "That didn't send. Try again."
+            }
+          ],
+          structuredContent: { status: failure(saved) }
         };
       }
       return {
@@ -4000,11 +4203,11 @@ function registerHubTool(server, ctx) {
         method: "POST",
         body: { ...identity, view }
       });
-      if (opened == null || opened.status === "off" || opened.status === "sign_in") {
+      if (opened == null || opened.error || opened.status !== "open") {
         return {
           isError: true,
           content: [{ type: "text", text: "The hub could not refresh." }],
-          structuredContent: { status: opened?.status ?? "service_unreachable" }
+          structuredContent: { status: failure(opened) }
         };
       }
       return {
@@ -4481,7 +4684,7 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
     apiKey,
     `/v1/conversations/${encodeURIComponent(args.conversation_id)}/messages?after=${after}&${identityQuery(identity)}`
   );
-  if (result == null) {
+  if (result == null || result.error || (typeof result.status === "number" && result.status >= 400)) {
     return {
       content: [{ type: "text", text: "The service is unreachable." }],
       structuredContent: {
