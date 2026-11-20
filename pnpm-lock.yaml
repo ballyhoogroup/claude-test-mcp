@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@getwithin/sdk':
-        specifier: link:vendor/within-sdk
+        specifier: file:vendor/within-sdk
         version: link:vendor/within-sdk
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.1
