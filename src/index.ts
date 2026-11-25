@@ -43,6 +43,7 @@ app.get("/", (_req, res) => {
     posthogAnalyticsEnabled: Boolean(posthogClient),
     supportBridgeSdkVersion: "0.4.0-e0eed9622bcd5dcadea7b659f093716785e28344",
     supportBridgeCaptureArguments: false,
+    supportBridgeHubsEnabled: true,
     supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)
       && process.env.SUPPORTBRIDGE_URL === "https://staging.getwith.in"
       && process.env.SUPPORTBRIDGE_SOURCE === "pitch-fork-mcp",

@@ -69,6 +69,7 @@ export function createServer(posthog = posthogClient): ServerInstallation {
     baseUrl: process.env.SUPPORTBRIDGE_URL,
     source: process.env.SUPPORTBRIDGE_SOURCE,
     vendorName: "Pitch Fork",
+    hubs: true,
     privacy: { captureArguments: false },
     ...(process.env.AUTHKIT_DOMAIN ? {
       identity: {
