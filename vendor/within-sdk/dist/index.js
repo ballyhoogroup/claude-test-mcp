@@ -420,9 +420,9 @@ function redactMcpIntent(value) {
   EMAIL.lastIndex = 0;
   SECRET_VALUE.lastIndex = 0;
   CARD.lastIndex = 0;
-  const text2 = String(value ?? "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!text2) return "";
-  return text2.replace(EMAIL, "[redacted]").replace(SECRET_VALUE, "[redacted]").replace(CARD, redactCard).trim().slice(0, 300);
+  const text3 = String(value ?? "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!text3) return "";
+  return text3.replace(EMAIL, "[redacted]").replace(SECRET_VALUE, "[redacted]").replace(CARD, redactCard).trim().slice(0, 300);
 }
 function redact(value, depth = 0) {
   if (depth > 2) return "[truncated]";
@@ -444,25 +444,25 @@ function isSafeTokenValue(value) {
     return Number.isFinite(value) && Number.isInteger(value) && Math.abs(value) <= 1e6;
   }
   if (typeof value !== "string") return false;
-  const text2 = value.trim();
-  if (!text2 || text2 === "[redacted]" || text2 === "[truncated]") return false;
-  if (/\s/.test(text2)) return false;
-  if (EMAIL.test(text2)) {
+  const text3 = value.trim();
+  if (!text3 || text3 === "[redacted]" || text3 === "[truncated]") return false;
+  if (/\s/.test(text3)) return false;
+  if (EMAIL.test(text3)) {
     EMAIL.lastIndex = 0;
     return false;
   }
   EMAIL.lastIndex = 0;
-  if (SECRET_VALUE.test(text2)) {
+  if (SECRET_VALUE.test(text3)) {
     SECRET_VALUE.lastIndex = 0;
     return false;
   }
   SECRET_VALUE.lastIndex = 0;
-  return SHORT_TOKEN.test(text2);
+  return SHORT_TOKEN.test(text3);
 }
 function tokenLeaf(key) {
-  const text2 = String(key ?? "");
-  const dot = text2.lastIndexOf(".");
-  return dot >= 0 ? text2.slice(dot + 1) : text2;
+  const text3 = String(key ?? "");
+  const dot = text3.lastIndexOf(".");
+  return dot >= 0 ? text3.slice(dot + 1) : text3;
 }
 function addToken(tokens, key, value, depth) {
   if (Object.keys(tokens).length >= 12) return;
@@ -517,11 +517,11 @@ function collectPreview(parts, key, value, depth) {
     return;
   }
   if (typeof value !== "string") return;
-  const text2 = value.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!text2 || text2 === "[redacted]" || text2 === "[truncated]") return;
+  const text3 = value.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!text3 || text3 === "[redacted]" || text3 === "[truncated]") return;
   const searchable = ARGUMENT_TEXT_KEY.test(leaf);
-  if (!searchable && (isSafeTokenValue(text2) || !/\s/.test(text2))) return;
-  parts.push(text2);
+  if (!searchable && (isSafeTokenValue(text3) || !/\s/.test(text3))) return;
+  parts.push(text3);
 }
 function argumentPreview(args) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return "";
@@ -574,7 +574,7 @@ var normalizeAssistanceArgs2 = normalizeAssistanceArgs;
 var normalizeOfferArgs2 = normalizeOfferArgs;
 
 // src/constants.ts
-var SDK_VERSION = "0.3.0";
+var SDK_VERSION = "0.4.0";
 var CHAT_RESOURCE = "ui://supportbridge/chat";
 var INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 var HUB_RESOURCE = "ui://supportbridge/hub";
@@ -590,7 +590,8 @@ function frameSize(resourceUri) {
 var HUB_INSTRUCTIONS = "When a tool result includes hubInvitation, answer the tool first, then say that one sentence, then call open_hub if the customer wants it. The result names open_hub as the next call. view selects a screen (inbox, suggestions, messages, usage, account, or questions) and the other screens stay available. A no calls open_hub with view set to decline. Opening the hub contacts nobody.";
 var SECURITY_CUES = (intentById("security")?.words ?? []).join(", ");
 var VOID_CALL_SENTENCE = "When a tool this server offers cannot return what the user asked, and the product could offer it, call report_void with that tool's name and asked set to a short phrase in the customer's own words. A filter that matched nothing, where the product already offers that kind of result, stays a normal result.";
-var SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Also call get_vendor_answer when the user asks something specific to this company that those topics do not cover, and pass a short phrase in the customer's own words as the topic. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. send_message requires client_message_id, a unique id for that message, reused on a retry. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. When a vendor answer begins with "The closest information", keep that sentence and do not present the reply as a complete answer. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user. ${VOID_CALL_SENTENCE}`;
+var EXCEPTION_CALL_SENTENCE = "When a tool result says an exception can be requested and names a block id that starts with blk_, call request_exception with that block_id. The first call sets customer_confirmed to false and the preview is relayed as written. A second call happens only after the customer agrees to send it, with customer_confirmed true, a new client_request_id, and customer_ask in their words. A later check passes request_id and no block_id. Nothing is sent until the customer agrees. Leave out prices, plans, and upgrades.";
+var SERVER_INSTRUCTIONS = `This connector has no public price list. Call get_vendor_answer for pricing or plans, an upgrade, limits, or seats, a demo, a trial or pilot, enterprise options, quotes, or contracts, implementation or onboarding, security or compliance (${SECURITY_CUES}), billing or refunds, cancellation or downgrades, a renewal, a competitive comparison, or budget and timing before answering from general knowledge. Also call get_vendor_answer when the user asks something specific to this company that those topics do not cover, and pass a short phrase in the customer's own words as the topic. Calling get_vendor_answer contacts nobody. When a vendor answer card is shown, answer in two or three sentences and leave the card's wording as shown. Relay Speak to a Live Person, Speak to Assistant, and Decline. The result names the next call: which tool, which action, the offer id, and the suggested message. confirm_assistance runs only after the customer chooses a live person. Pass the offer id. With no offer id, confirm_assistance accepts the pending manual offer for this session and opens the chat. decline_assistance is the follow-up for every choice that is not opening a live chat. Its actions are decline, assistant, file_note, get_messages, send_message, end, and get_offer. Message actions get_messages, send_message, and end are for the open chat. send_message requires client_message_id, a unique id for that message, reused on a retry. Speak to Assistant is action assistant. Send note is action file_note. A no is action decline. A note is not a chat. If Speak to a Live Person finds nobody free, say nobody is online, point to the note on the card, and offer to keep helping. The vendor is contacted only after confirm_assistance or file_note succeeds. When the result includes assistance or escalation, also relay the suggested message. If a representative already offered help, relay the text line. Yes calls confirm_assistance with the offer id. A missing offer id calls confirm_assistance with no id. No calls decline_assistance with action decline. A later call in that session does not repeat the line. If get_vendor_answer fails, tell the user the company's answer could not be loaded. Do not guess a price or plan, and do not contact anyone. When a vendor answer begins with "The closest information", keep that sentence and do not present the reply as a complete answer. Data tool results may include an \`assistance\` object with a suggested message; if present, you can relay it to the user. ${VOID_CALL_SENTENCE} ${EXCEPTION_CALL_SENTENCE}`;
 var DISPLAY_INSTRUCTIONS = SERVER_INSTRUCTIONS;
 var RESULT_HINT_SENTENCE = "Pricing and commercial questions are answered by get_vendor_answer.";
 function vendorAnswerDescription(vendorName) {
@@ -599,11 +600,13 @@ function vendorAnswerDescription(vendorName) {
 }
 var CONFIRM_ASSISTANCE_DESCRIPTION = "Opens the live chat only after the customer chooses a live person. Pass the offer id. With no offer id, accepts the pending manual offer for this session.";
 var REPORT_VOID_DESCRIPTION = "Record that a tool this server offers could not return what the user asked, and the product could offer it. tool is that tool's name. asked is a short phrase in the customer's own words. Call it after that tool runs. A filter that matched nothing, where the product already offers that kind of result, stays a normal result.";
+var REQUEST_EXCEPTION_DESCRIPTION = "Ask the account owner to allow one blocked action. block_id is the id from the blocked result. Call once with customer_confirmed false and relay the preview as written. Call again only after the customer agrees, with customer_confirmed true, a new client_request_id, and customer_ask. A status check passes request_id only. Nothing is sent until the customer agrees.";
 var WITHIN_TOOL_NAMES = [
   "get_vendor_answer",
   "confirm_assistance",
   "decline_assistance",
-  "report_void"
+  "report_void",
+  "request_exception"
 ];
 var HUB_TOOL_NAME = "open_hub";
 var HUB_CARD_TOOL_NAME = "hub_card";
@@ -661,9 +664,9 @@ function zodFlavour(schema) {
   return "v3";
 }
 function intentFieldsFrom(raw) {
-  const text2 = redactMcpIntent(raw);
-  if (!text2) return {};
-  return { mcpIntent: text2, mcpIntentSource: "context_parameter" };
+  const text3 = redactMcpIntent(raw);
+  if (!text3) return {};
+  return { mcpIntent: text3, mcpIntentSource: "context_parameter" };
 }
 function makeCapturedFields(captureArguments) {
   return (args, outcome, result) => {
@@ -678,6 +681,53 @@ function makeCapturedFields(captureArguments) {
       ...reply ? { resultText: reply } : {}
     };
   };
+}
+
+// src/export-block.ts
+function text(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function isBlock(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value;
+  if (!row.export || typeof row.export !== "object" || Array.isArray(row.export)) return false;
+  if (!row.limit || typeof row.limit !== "object" || Array.isArray(row.limit)) return false;
+  const exp = row.export;
+  const limit = row.limit;
+  return Boolean(text(exp.kind) && text(exp.label) && text(limit.code) && text(row.message));
+}
+function readExportBlock(result) {
+  if (!result || typeof result !== "object") return null;
+  const row = result;
+  const structured = row.structuredContent && typeof row.structuredContent === "object" ? row.structuredContent : void 0;
+  if (isBlock(structured?.exportBlock)) return structured.exportBlock;
+  if (isBlock(structured)) return structured;
+  return null;
+}
+function exportBlocked(extraOrDescriptor, maybeDescriptor) {
+  const descriptor = maybeDescriptor ?? extraOrDescriptor;
+  const message = text(descriptor?.message);
+  return {
+    isError: true,
+    content: [{ type: "text", text: message }],
+    structuredContent: { exportBlock: descriptor }
+  };
+}
+function presentBlockedExport(result, message, line) {
+  const source = result ?? {};
+  const content = Array.isArray(source.content) ? source.content.filter((part) => part?.type !== "text") : [];
+  content.push({ type: "text", text: message });
+  if (line) content.push({ type: "text", text: line });
+  const prior = source.structuredContent && typeof source.structuredContent === "object" ? { ...source.structuredContent } : {};
+  delete prior.exportBlock;
+  return { ...source, isError: true, content, structuredContent: prior };
+}
+function appendResultLine(result, line) {
+  if (!line) return result ?? {};
+  const source = result ?? {};
+  const content = Array.isArray(source.content) ? [...source.content] : [];
+  content.push({ type: "text", text: line });
+  return { ...source, content };
 }
 
 // src/results.ts
@@ -721,8 +771,8 @@ var INTENT_TOPIC = {
 function consentNote(summary, acceptLabel) {
   const label = String(acceptLabel || "Chat with support").trim() || "Chat with support";
   const tail = `Nothing is sent until you choose ${label}.`;
-  const text2 = String(summary || "").trim();
-  return text2 ? `${text2} ${tail}` : tail;
+  const text3 = String(summary || "").trim();
+  return text3 ? `${text3} ${tail}` : tail;
 }
 function ownEntry(table, key) {
   return typeof key === "string" && Object.hasOwn(table, key) ? table[key] ?? "" : "";
@@ -793,18 +843,18 @@ function asyncEscalationCopy(note) {
     suggestedMessage: "I've drafted a note you can send with the button above."
   };
 }
-function answerSentences(text2) {
-  return String(text2 ?? "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=[A-Z])/).map((part) => part.trim()).filter(Boolean);
+function answerSentences(text3) {
+  return String(text3 ?? "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=[A-Z])/).map((part) => part.trim()).filter(Boolean);
 }
 function clipDirect(value) {
-  const text2 = String(value ?? "").replace(/\s+/g, " ").trim();
-  if (text2.length <= 90) return text2;
-  const cut = text2.slice(0, 90);
+  const text3 = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text3.length <= 90) return text3;
+  const cut = text3.slice(0, 90);
   const space = cut.lastIndexOf(" ");
   return (space > 40 ? cut.slice(0, space) : cut).replace(/[.,;:]$/, "").trim();
 }
-function splitVendorAnswer(text2) {
-  const full = String(text2 ?? "").replace(/\s+/g, " ").trim();
+function splitVendorAnswer(text3) {
+  const full = String(text3 ?? "").replace(/\s+/g, " ").trim();
   const sentences = answerSentences(full);
   const direct = clipDirect(sentences[0] || full);
   const supporting = sentences.slice(1, 5);
@@ -1517,26 +1567,49 @@ function instrumentTool(ctx, toolName, handler) {
       ...meta.description ? { description: meta.description } : {},
       ...errorText ? { error: errorText } : {}
     });
-    if (thrown || result?.isError) {
+    const block = thrown ? null : readExportBlock(result);
+    if (thrown || result?.isError && !block) {
       if (thrown) throw thrown;
       return result;
     }
+    let output = result;
+    if (block) {
+      const report = await serviceFetch(ctx.baseUrl, ctx.options.apiKey, "/v1/blocks", {
+        method: "POST",
+        body: {
+          ...identity,
+          ...ctx.hostFields(extra),
+          toolName,
+          message: block.message,
+          type: block.type ?? "export",
+          export: block.export,
+          limit: block.limit
+        }
+      });
+      const line = report && typeof report.line === "string" ? report.line : null;
+      if (line == null) {
+        return presentBlockedExport(result, block.message, "");
+      }
+      output = presentBlockedExport(result, block.message, line);
+    }
     const delivered = await deliverOffer(ctx.baseUrl, ctx.options.apiKey, identity);
     if (delivered == null) {
-      return unreachableVendorResult(result);
+      return block ? output : unreachableVendorResult(result);
     }
     await activity;
+    const exceptionLine = typeof delivered.exceptionLine === "string" ? delivered.exceptionLine : "";
+    if (exceptionLine) output = appendResultLine(output, exceptionLine);
     const presentingManual = Boolean(delivered.offer) && delivered.newlyPresented !== false;
-    if (!presentingManual && ctx.options.hubs === true) {
+    if (!presentingManual && ctx.options.hubs === true && !block) {
       const invite = await serviceFetch(ctx.baseUrl, ctx.options.apiKey, "/v1/hubs/invite", {
         method: "POST",
         body: { ...identity, toolName }
       });
       const line = invite && typeof invite.line === "string" ? invite.line : "";
-      if (line) return attachHubLine(result, line);
+      if (line) return attachHubLine(output, line);
     }
-    if (!delivered.offer || delivered.newlyPresented === false) return result;
-    return attachInvitation(result, delivered.offer);
+    if (!delivered.offer || delivered.newlyPresented === false || block) return output;
+    return attachInvitation(output, delivered.offer);
   };
   wrapped.supportbridgeReportsActivity = true;
   return wrapped;
@@ -1621,21 +1694,21 @@ function affirmedAt(source, key) {
 }
 function firstClaimText(source, keys) {
   for (const key of keys) {
-    const text2 = textAt(source, key);
-    if (text2) return text2;
+    const text3 = textAt(source, key);
+    if (text3) return text3;
   }
   return "";
 }
 function readClaim(sources, field, namespaces, claimMap) {
   const keys = keysFor(field, namespaces, claimMap);
   for (const source of sources) {
-    const text2 = firstClaimText(source, keys);
-    if (text2) return { text: text2, source };
+    const text3 = firstClaimText(source, keys);
+    if (text3) return { text: text3, source };
   }
   return { text: "", source: null };
 }
-function personalName(text2) {
-  return /^[^\s@]+@[^\s@]+$/.test(text2.trim()) ? "" : text2.trim();
+function personalName(text3) {
+  return /^[^\s@]+@[^\s@]+$/.test(text3.trim()) ? "" : text3.trim();
 }
 function personName(sources, namespaces, claimMap) {
   const claim = (field) => personalName(readClaim(sources, field, namespaces, claimMap).text);
@@ -1647,8 +1720,8 @@ function personName(sources, namespaces, claimMap) {
 }
 function readBare(sources, field) {
   for (const source of sources) {
-    const text2 = textAt(source, field);
-    if (text2) return text2;
+    const text3 = textAt(source, field);
+    if (text3) return text3;
   }
   return "";
 }
@@ -1731,9 +1804,9 @@ function hostFieldsFromExtra(extra, client) {
   return {};
 }
 function usableIdentity(value, placeholders) {
-  const text2 = typeof value === "string" ? value.trim() : "";
-  if (!text2 || placeholders.has(text2.toLowerCase())) return "";
-  return text2;
+  const text3 = typeof value === "string" ? value.trim() : "";
+  if (!text3 || placeholders.has(text3.toLowerCase())) return "";
+  return text3;
 }
 function installIssuer(identity, issuer) {
   return identity.authUserId && !identity.authIssuer ? { ...identity, authIssuer: issuer } : identity;
@@ -1750,13 +1823,21 @@ async function identityOf(identify, context, mintSessionId, readIdentity = ident
   if (profile.email && !customerUserId.includes("@")) customerUserId = profile.email;
   if (profile.name && !displayName) displayName = profile.name;
   const customerSessionId = usableIdentity(provided.sessionId ?? provided.customerSessionId, PLACEHOLDER_IDS) || usableIdentity(fromContext.sessionId, PLACEHOLDER_IDS) || (typeof mintSessionId === "function" ? mintSessionId() : `mcp_${randomUUID()}`);
+  const accountId = accountIdFrom(context);
   return {
     customerSessionId,
     ...customerUserId ? { customerUserId } : {},
     ...authUserId ? { authUserId } : {},
     ...authIssuer ? { authIssuer } : {},
-    ...displayName ? { displayName } : {}
+    ...displayName ? { displayName } : {},
+    ...accountId ? { accountId } : {}
   };
+}
+function accountIdFrom(context) {
+  const root = plainObject(context) ? context : {};
+  const authInfo = plainObject(root.authInfo) ? root.authInfo : {};
+  const extra = plainObject(authInfo.extra) ? authInfo.extra : {};
+  return textAt(extra, "account_id") || textAt(extra, "org_id");
 }
 
 // src/profile.ts
@@ -1772,7 +1853,7 @@ var MAX_REMEMBERED = 1e3;
 function plain(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function text(value) {
+function text2(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 var LOOPBACK = /* @__PURE__ */ new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -1804,11 +1885,11 @@ function profileReader(config, fetchImpl = globalThis.fetch) {
     if (!response.ok) return { profile: {}, ok: false, sub: "" };
     const body = await response.json();
     if (!plain(body)) return { profile: {}, ok: false, sub: "" };
-    const email = text(body.email).toLowerCase();
+    const email = text2(body.email).toLowerCase();
     const verified = body.email_verified === true || body.email_verified === "true";
-    const name = personalName(text(body.name)) || [text(body.given_name), text(body.family_name)].filter(Boolean).join(" ");
+    const name = personalName(text2(body.name)) || [text2(body.given_name), text2(body.family_name)].filter(Boolean).join(" ");
     return {
-      sub: text(body.sub),
+      sub: text2(body.sub),
       ok: true,
       profile: {
         ...email.includes("@") && verified ? { email } : {},
@@ -1819,10 +1900,10 @@ function profileReader(config, fetchImpl = globalThis.fetch) {
   return async (context) => {
     if (!endpoint || !base) return {};
     const authInfo = plain(context) && plain(context.authInfo) ? context.authInfo : {};
-    const token = text(authInfo.token);
+    const token = text2(authInfo.token);
     const claims = plain(authInfo.extra) ? authInfo.extra : {};
-    const sub = text(claims.sub) || text(claims.user_id) || text(claims.userId);
-    const iss = text(claims.iss);
+    const sub = text2(claims.sub) || text2(claims.user_id) || text2(claims.userId);
+    const iss = text2(claims.iss);
     if (!token || !sub || iss && !sameIssuer(iss, String(config.issuer))) return {};
     const key = `${String(config.issuer)}
 ${sub}`;
@@ -4409,6 +4490,57 @@ function registerWithinTools(server, ctx) {
     };
   };
   voidTool.recordsOwnActivity = true;
+  const exceptionTool = async (args, extra) => {
+    const identity = await ctx.callerIdentity(extra);
+    const requestId = String(args?.request_id ?? args?.requestId ?? "").trim();
+    const blockId = String(args?.block_id ?? args?.blockId ?? "").trim();
+    const payload = await serviceFetch(ctx.baseUrl, ctx.options.apiKey, "/v1/export-exceptions", {
+      method: "POST",
+      body: {
+        ...identity,
+        ...ctx.hostFields(extra),
+        ...blockId ? { block_id: blockId } : {},
+        ...requestId ? { request_id: requestId } : {},
+        customer_confirmed: args?.customer_confirmed === true || args?.customerConfirmed === true,
+        ...args?.client_request_id || args?.clientRequestId ? { client_request_id: String(args.client_request_id ?? args.clientRequestId) } : {},
+        ...args?.customer_ask || args?.customerAsk ? { customer_ask: String(args.customer_ask ?? args.customerAsk) } : {},
+        ...args?.business_reason || args?.businessReason ? { business_reason: String(args.business_reason ?? args.businessReason) } : {}
+      }
+    });
+    if (!payload || payload.error) {
+      return {
+        content: [{ type: "text", text: "The request could not be sent. Try again in a moment." }],
+        structuredContent: { status: "service_unreachable" }
+      };
+    }
+    const text3 = typeof payload.text === "string" ? payload.text : "";
+    return { content: [{ type: "text", text: text3 }], structuredContent: payload };
+  };
+  exceptionTool.recordsOwnActivity = true;
+  server.registerTool(
+    "request_exception",
+    {
+      title: "Request an exception",
+      description: REQUEST_EXCEPTION_DESCRIPTION,
+      inputSchema: z.object({
+        block_id: looseField("Block id from the blocked action, starting with blk_."),
+        customer_confirmed: looseField(
+          "False previews the request. True sends it, and only after the customer agrees."
+        ),
+        client_request_id: looseField("A new id for this send, reused if the send is retried."),
+        customer_ask: looseField("What the customer wants the owner to allow, in their words."),
+        business_reason: looseField("Why they need it, in their words."),
+        request_id: looseField("Set alone to read the status of a request already sent.")
+      }).passthrough(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    exceptionTool
+  );
   server.registerTool(
     "report_void",
     {
@@ -4684,7 +4816,7 @@ async function pollMessages(baseUrl, apiKey, identity, args) {
     apiKey,
     `/v1/conversations/${encodeURIComponent(args.conversation_id)}/messages?after=${after}&${identityQuery(identity)}`
   );
-  if (result == null || result.error || (typeof result.status === "number" && result.status >= 400)) {
+  if (result == null) {
     return {
       content: [{ type: "text", text: "The service is unreachable." }],
       structuredContent: {
@@ -4822,10 +4954,10 @@ function conversationRequired(conversationId) {
     structuredContent: { status: "conversation_id_required", chatStarted: false }
   };
 }
-async function replyToVendorAgent(baseUrl, apiKey, identity, offerId, text2) {
+async function replyToVendorAgent(baseUrl, apiKey, identity, offerId, text3) {
   const result = await serviceFetch(baseUrl, apiKey, "/v1/agent-chat", {
     method: "POST",
-    body: { ...identity, offerId, text: text2 }
+    body: { ...identity, offerId, text: text3 }
   });
   if (result == null) return serviceUnreachableResult();
   if (!result?.reply) {
@@ -6447,4 +6579,4 @@ function SupportBridge() {
 }
 SupportBridge.install = install;
 
-export { APP_MIME, ASSISTANCE_INTENT_IDS2 as ASSISTANCE_INTENT_IDS, CHAT_RESOURCE, CONFIRM_ASSISTANCE_DESCRIPTION, DECLINE_ASSISTANCE_DESCRIPTION, DISPLAY_INSTRUCTIONS, INTENT_OFFER_RESOURCE, RESULT_HINT_SENTENCE, SDK_VERSION, SERVER_INSTRUCTIONS, STANDARD_ASSISTANCE_INTENTS2 as STANDARD_ASSISTANCE_INTENTS, SupportBridge, assistanceDraft, assistanceFromOffer, asyncEscalationCopy, attachInvitation, cardFacts, identifyFromContext, invitationText, liveOfferCopy, nameInitials, normalizeAssistanceArgs2 as normalizeAssistanceArgs, normalizeOfferArgs2 as normalizeOfferArgs, previewIntentOfferHtml, splitVendorAnswer, suggestedAssistanceMessage, vendorAnswerDescription, vendorAnswerResult, wrapTool };
+export { APP_MIME, ASSISTANCE_INTENT_IDS2 as ASSISTANCE_INTENT_IDS, CHAT_RESOURCE, CONFIRM_ASSISTANCE_DESCRIPTION, DECLINE_ASSISTANCE_DESCRIPTION, DISPLAY_INSTRUCTIONS, INTENT_OFFER_RESOURCE, RESULT_HINT_SENTENCE, SDK_VERSION, SERVER_INSTRUCTIONS, STANDARD_ASSISTANCE_INTENTS2 as STANDARD_ASSISTANCE_INTENTS, SupportBridge, assistanceDraft, assistanceFromOffer, asyncEscalationCopy, attachInvitation, cardFacts, exportBlocked, identifyFromContext, invitationText, liveOfferCopy, nameInitials, normalizeAssistanceArgs2 as normalizeAssistanceArgs, normalizeOfferArgs2 as normalizeOfferArgs, previewIntentOfferHtml, splitVendorAnswer, suggestedAssistanceMessage, vendorAnswerDescription, vendorAnswerResult, wrapTool };

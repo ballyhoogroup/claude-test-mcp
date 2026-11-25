@@ -14,7 +14,7 @@ declare const normalizeOfferArgs: (args?: Record<string, unknown>) => {
     offerId: string;
 };
 
-declare const SDK_VERSION = "0.3.0";
+declare const SDK_VERSION = "0.4.0";
 declare const CHAT_RESOURCE = "ui://supportbridge/chat";
 declare const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 declare const APP_MIME = "text/html;profile=mcp-app";
@@ -262,6 +262,30 @@ declare function identifyFromContext(context: McpToolContext, options?: Identify
 /** Copy a vendor tool without rewriting its description. Result interception stays on the installed wrapper. */
 declare function wrapTool<T extends VendorTool>(tool: T, options?: WrapToolOptions): T;
 
+type ExceptionType = 'export' | 'seats' | 'quota' | 'feature';
+interface ExportBlockInput {
+    /** What was refused. Absent means an export. */
+    type?: ExceptionType;
+    export: {
+        kind: string;
+        label: string;
+        requested?: number;
+        unit?: string;
+    };
+    limit: {
+        code: string;
+        allowed?: number;
+        plan?: string;
+    };
+    message: string;
+}
+/**
+ * The result a vendor tool returns when it refuses an export. Pass the descriptor, or the
+ * tool's extra and then the descriptor. The wrapper stores the block and adds the invitation.
+ */
+declare function exportBlocked(descriptor: ExportBlockInput): ToolResult;
+declare function exportBlocked(extra: unknown, descriptor: ExportBlockInput): ToolResult;
+
 interface OfferLike {
     id?: string;
     intent?: string;
@@ -346,4 +370,4 @@ declare namespace SupportBridge {
  */
 declare function previewIntentOfferHtml(payload?: unknown): string;
 
-export { APP_MIME, ASSISTANCE_INTENT_IDS, type AssistanceIntent, CHAT_RESOURCE, CONFIRM_ASSISTANCE_DESCRIPTION, type ClaimMap, type CustomerIdentity, DECLINE_ASSISTANCE_DESCRIPTION, DISPLAY_INSTRUCTIONS, INTENT_OFFER_RESOURCE, type IdentifyOptions, type IdentifyResult, type IdentityConfig, type IdentityProvider, type InstallOptions, type InstrumentedHandler, type InstrumentedTool, type McpToolContext, RESULT_HINT_SENTENCE, SDK_VERSION, SERVER_INSTRUCTIONS, STANDARD_ASSISTANCE_INTENTS, SupportBridge, type SupportBridgeInstallation, type ToolHandler, type VendorMcpServer, type VendorTool, type WrapToolOptions, assistanceDraft, assistanceFromOffer, asyncEscalationCopy, attachInvitation, cardFacts, identifyFromContext, invitationText, liveOfferCopy, nameInitials, normalizeAssistanceArgs, normalizeOfferArgs, previewIntentOfferHtml, splitVendorAnswer, suggestedAssistanceMessage, vendorAnswerDescription, vendorAnswerResult, wrapTool };
+export { APP_MIME, ASSISTANCE_INTENT_IDS, type AssistanceIntent, CHAT_RESOURCE, CONFIRM_ASSISTANCE_DESCRIPTION, type ClaimMap, type CustomerIdentity, DECLINE_ASSISTANCE_DESCRIPTION, DISPLAY_INSTRUCTIONS, type ExportBlockInput, INTENT_OFFER_RESOURCE, type IdentifyOptions, type IdentifyResult, type IdentityConfig, type IdentityProvider, type InstallOptions, type InstrumentedHandler, type InstrumentedTool, type McpToolContext, RESULT_HINT_SENTENCE, SDK_VERSION, SERVER_INSTRUCTIONS, STANDARD_ASSISTANCE_INTENTS, SupportBridge, type SupportBridgeInstallation, type ToolHandler, type VendorMcpServer, type VendorTool, type WrapToolOptions, assistanceDraft, assistanceFromOffer, asyncEscalationCopy, attachInvitation, cardFacts, exportBlocked, identifyFromContext, invitationText, liveOfferCopy, nameInitials, normalizeAssistanceArgs, normalizeOfferArgs, previewIntentOfferHtml, splitVendorAnswer, suggestedAssistanceMessage, vendorAnswerDescription, vendorAnswerResult, wrapTool };

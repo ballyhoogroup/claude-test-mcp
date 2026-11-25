@@ -69,8 +69,13 @@ export function createServer(posthog = posthogClient): ServerInstallation {
     baseUrl: process.env.SUPPORTBRIDGE_URL,
     source: process.env.SUPPORTBRIDGE_SOURCE,
     vendorName: "Pitch Fork",
-    hubs: true,
     privacy: { captureArguments: false },
+    ...(process.env.AUTHKIT_DOMAIN ? {
+      identity: {
+        provider: "workos" as const,
+        issuer: (process.env.AUTHKIT_DOMAIN.startsWith("http") ? process.env.AUTHKIT_DOMAIN : `https://${process.env.AUTHKIT_DOMAIN}`).replace(/\/$/, ""),
+      },
+    } : {}),
   });
 
   const registerBusinessTool = (tool: {

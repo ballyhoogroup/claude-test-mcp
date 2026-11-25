@@ -13,6 +13,49 @@ delete process.env.POSTHOG_PROJECT_TOKEN;
 globalThis.fetch = async () => Response.json({});
 const { createServer } = await import("../server.js");
 
+test("company refusal records a block and exception preview stays separate from send", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousLimits = process.env.COMPANY_ACCESS_LIMITS_JSON;
+  const user = `exception-${crypto.randomUUID()}`;
+  process.env.COMPANY_ACCESS_LIMITS_JSON = JSON.stringify({ [user]: 0 });
+  const calls: Array<{url: string; body: any}> = [];
+  let sent = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    calls.push({url, body});
+    if (url.endsWith("/v1/blocks")) return Response.json({recorded: true, blockId: "blk_test", line: "An exception can be requested from your account owner. Reference blk_test."});
+    if (url.endsWith("/v1/export-exceptions")) {
+      if (body.customer_confirmed) sent++;
+      return Response.json({status: body.customer_confirmed ? "pending" : "preview", text: body.customer_confirmed ? "Request sent." : "Send this request to your account owner?"});
+    }
+    return Response.json({});
+  };
+  const {client, server} = await connectedClient(user);
+  try {
+    const blocked = await client.callTool({name: "get_company", arguments: {id: "co-001"}});
+    assert.equal(blocked.isError, true);
+    assert.match(JSON.stringify(blocked.content), /Reference blk_test/);
+    assert.doesNotMatch(JSON.stringify(blocked), /exportBlock|resourceUri/);
+    const report = calls.find(c => c.url.endsWith("/v1/blocks"))!;
+    assert.equal(report.body.customerUserId, user);
+    assert.equal(report.body.limit.allowed, 0);
+    assert.equal(report.body.type, "quota");
+    const preview = await client.callTool({name: "request_exception", arguments: {block_id: "blk_test", customer_confirmed: false}});
+    assert.equal((preview.structuredContent as any).status, "preview");
+    assert.equal(sent, 0);
+    const result = await client.callTool({name: "request_exception", arguments: {block_id: "blk_test", customer_confirmed: true, client_request_id: crypto.randomUUID(), customer_ask: "Let me see more companies"}});
+    assert.equal((result.structuredContent as any).status, "pending");
+    assert.equal(sent, 1);
+    const before = calls.filter(c => c.url.endsWith("/v1/blocks")).length;
+    await client.callTool({name: "get_company", arguments: {id: "not-a-company"}});
+    assert.equal(calls.filter(c => c.url.endsWith("/v1/blocks")).length, before);
+  } finally {
+    await client.close(); await server.close(); globalThis.fetch = previousFetch;
+    if (previousLimits === undefined) delete process.env.COMPANY_ACCESS_LIMITS_JSON; else process.env.COMPANY_ACCESS_LIMITS_JSON = previousLimits;
+  }
+});
+
 async function connectedClient(userId = `test-${crypto.randomUUID()}`, claims: Record<string, unknown> = {}) {
   const { server } = createServer();
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -30,8 +73,8 @@ test("installs only the local SDK tools beside the five business tools", async (
   try {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), [
-      "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer", "hub_card",
-      "list_companies", "list_industries", "open_hub", "report_void", "search",
+      "confirm_assistance", "decline_assistance", "fetch", "get_company", "get_vendor_answer",
+      "list_companies", "list_industries", "report_void", "request_exception", "search",
     ]);
     assert.equal(new Set(tools.map(tool => tool.name)).size, tools.length);
     assert.match(client.getInstructions() ?? "", /company discovery and market intelligence/);
@@ -39,7 +82,7 @@ test("installs only the local SDK tools beside the five business tools", async (
     assert.match(client.getInstructions() ?? "", /When a tool this server offers cannot return what the user asked/);
     assert.match(client.getInstructions() ?? "", /A filter that matched nothing/);
     const { resources } = await client.listResources();
-    assert.deepEqual(resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/hub", "ui://supportbridge/intent-offer"]);
+    assert.deepEqual(resources.map(resource => resource.uri).sort(), ["ui://supportbridge/chat", "ui://supportbridge/intent-offer"]);
     for (const name of ["search", "fetch", "list_companies", "get_company", "list_industries"]) {
       assert.equal(tools.find(tool => tool.name === name)?._meta, undefined);
     }
@@ -113,7 +156,7 @@ test("company budget is shared across MCP tool calls and fresh server instances"
     for (const name of ["get_company", "fetch"]) {
       const blocked = await next.client.callTool({ name, arguments: { id: "co-011" } });
       assert.equal(blocked.isError, true);
-      assert.match(JSON.stringify(blocked), /company_limit_reached/);
+      assert.match(JSON.stringify(blocked), /company allowance/);
       assert.doesNotMatch(JSON.stringify(blocked), /CreditBridge/);
       const revisit = await next.client.callTool({ name, arguments: { id: "co-001" } });
       assert.notEqual(revisit.isError, true, JSON.stringify(revisit));
@@ -135,8 +178,8 @@ test("PostHog instrumentation records each tool call once and preserves existing
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 11);
-    assert.equal(new Set(tools.map(tool => tool.name)).size, 11);
+    assert.equal(tools.length, 10);
+    assert.equal(new Set(tools.map(tool => tool.name)).size, 10);
     assert.equal(tools.find(tool => tool.name === "list_industries")?.description, "List Pitch Fork industries and company counts.");
     const result = await client.callTool({ name: "list_industries", arguments: {} });
     assert.notEqual(result.isError, true);
@@ -234,7 +277,7 @@ test("report_void records a registered business tool, rejects unknown tools, and
   } finally {globalThis.fetch = originalFetch; await client.close(); await server.close();}
 });
 
-test("hub invites preserve business output, fail open, and yield to manual offers", async () => {
+test("hubs stay off while business output and manual offers remain intact", async () => {
   const previous = globalThis.fetch;
   let mode = "off";
   let invites = 0;
@@ -253,9 +296,9 @@ test("hub invites preserve business output, fail open, and yield to manual offer
     const baseline = await client.callTool({name: "list_industries", arguments: {}});
     mode = "invite";
     const invited = await client.callTool({name: "list_industries", arguments: {}});
-    assert.equal((invited.structuredContent as any).hubInvitation, "Your Pitch Fork hub is ready. Open it?");
+    assert.deepEqual(invited.structuredContent, baseline.structuredContent);
     assert.deepEqual((invited.content as any[]).slice(0, (baseline.content as any[]).length), baseline.content);
-    assert.equal((invited.content as any[]).at(-1).text, "Your Pitch Fork hub is ready. Open it?");
+    assert.equal(invites, 0);
     mode = "failure";
     assert.deepEqual(await client.callTool({name: "list_industries", arguments: {}}), baseline);
     mode = "manual";

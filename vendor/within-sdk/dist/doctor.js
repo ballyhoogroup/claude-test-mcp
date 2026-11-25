@@ -262,7 +262,8 @@ var WITHIN_TOOL_NAMES = [
   "get_vendor_answer",
   "confirm_assistance",
   "decline_assistance",
-  "report_void"
+  "report_void",
+  "request_exception"
 ];
 var HUB_TOOL_NAME = "open_hub";
 var HUB_CARD_TOOL_NAME = "hub_card";

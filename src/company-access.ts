@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { exportBlocked } from "@getwithin/sdk";
 
 export class CompanyAccess {
   constructor(private path = process.env.COMPANY_ACCESS_STORE_PATH ?? resolve(".data/company-access.json")) {}
@@ -40,7 +41,12 @@ export function withCompanyAccess(name: string, handler: (args: any, context: an
       const document = JSON.parse(result.content[0].text);
       const rows = name === "search" ? document.results : name === "list_companies" ? document.companies : [document];
       const { selected, access: allowance } = access.select(rows, context);
-      if (!selected.length && rows.length) return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "company_limit_reached", access: allowance }) }] };
+      if (!selected.length && rows.length) return exportBlocked({
+        type: "quota",
+        export: { kind: "api", label: "Company records", requested: allowance.viewed + rows.length, unit: "companies" },
+        limit: { code: "row_cap", allowed: allowance.limit! },
+        message: `Your company allowance of ${allowance.limit} companies has been reached. You can revisit previously viewed companies.`,
+      });
       const output = name === "search" ? { ...document, results: selected, access: allowance }
         : name === "list_companies" ? { ...document, companies: selected, count: selected.length, access: allowance }
         : { ...document, access: allowance };

@@ -1,12 +1,10 @@
 {
   "package": "@getwithin/sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": "https://github.com/supportbridge-within/supportbridge-sdk-fork",
-  "commit": "0c9b11fa46ede735467ebe7890b418b66ea67449",
+  "commit": "e0eed9622bcd5dcadea7b659f093716785e28344",
   "sourcePackage": "packages/sdk",
   "dependency": "file:vendor/within-sdk",
   "buildCommand": "corepack yarn workspace @getwithin/sdk build",
-  "localChanges": [
-    "Preserve the existing open_hub HTTP-error guard; core tools and SERVER_INSTRUCTIONS are unchanged."
-  ]
+  "localChanges": []
 }

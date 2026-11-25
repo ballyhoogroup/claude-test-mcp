@@ -16,13 +16,13 @@ async function connected(hubs: boolean) {
   return { client, server };
 }
 
-test("hubs is optional and preserves the existing four tool definitions", async () => {
+test("hubs is optional and preserves the existing tool definitions", async () => {
   const previous = globalThis.fetch;
   globalThis.fetch = async () => Response.json({});
   const off = await connected(false), on = await connected(true);
   try {
     const before = await off.client.listTools(), after = await on.client.listTools();
-    assert.deepEqual(before.tools.map(t => t.name).sort(), ["confirm_assistance", "decline_assistance", "get_vendor_answer", "report_void"]);
+    assert.deepEqual(before.tools.map(t => t.name).sort(), ["confirm_assistance", "decline_assistance", "get_vendor_answer", "report_void", "request_exception"]);
     for (const tool of before.tools) assert.deepEqual(after.tools.find(t => t.name === tool.name), tool);
     assert.equal(after.tools.length, before.tools.length + 2);
     assert.equal((await off.client.listResources()).resources.some(r => r.uri === "ui://supportbridge/hub"), false);
