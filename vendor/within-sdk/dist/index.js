@@ -574,7 +574,7 @@ var normalizeAssistanceArgs2 = normalizeAssistanceArgs;
 var normalizeOfferArgs2 = normalizeOfferArgs;
 
 // src/constants.ts
-var SDK_VERSION = "0.4.0";
+var SDK_VERSION = "0.5.0";
 var CHAT_RESOURCE = "ui://supportbridge/chat";
 var INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 var HUB_RESOURCE = "ui://supportbridge/hub";
@@ -687,22 +687,31 @@ function makeCapturedFields(captureArguments) {
 function text(value) {
   return typeof value === "string" ? value.trim() : "";
 }
-function isBlock(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+function record(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function completeBlock(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value;
-  if (!row.export || typeof row.export !== "object" || Array.isArray(row.export)) return false;
-  if (!row.limit || typeof row.limit !== "object" || Array.isArray(row.limit)) return false;
-  const exp = row.export;
-  const limit = row.limit;
-  return Boolean(text(exp.kind) && text(exp.label) && text(limit.code) && text(row.message));
+  const exp = record(row.export);
+  const limit = record(row.limit);
+  const message = text(row.message);
+  const label = text(exp.label) || text(row.label);
+  if (!message || !label) return null;
+  const rest = { ...row };
+  delete rest.label;
+  return {
+    ...rest,
+    export: { ...exp, kind: text(exp.kind) || "other", label },
+    limit: { ...limit, code: text(limit.code) || "other" },
+    message
+  };
 }
 function readExportBlock(result) {
   if (!result || typeof result !== "object") return null;
-  const row = result;
-  const structured = row.structuredContent && typeof row.structuredContent === "object" ? row.structuredContent : void 0;
-  if (isBlock(structured?.exportBlock)) return structured.exportBlock;
-  if (isBlock(structured)) return structured;
-  return null;
+  const structured = record(result.structuredContent);
+  const bare = typeof structured.export === "object" && typeof structured.limit === "object" ? structured : null;
+  return completeBlock(structured.exportBlock) ?? completeBlock(bare);
 }
 function exportBlocked(extraOrDescriptor, maybeDescriptor) {
   const descriptor = maybeDescriptor ?? extraOrDescriptor;
@@ -710,7 +719,7 @@ function exportBlocked(extraOrDescriptor, maybeDescriptor) {
   return {
     isError: true,
     content: [{ type: "text", text: message }],
-    structuredContent: { exportBlock: descriptor }
+    structuredContent: { exportBlock: completeBlock(descriptor) ?? descriptor }
   };
 }
 function presentBlockedExport(result, message, line) {

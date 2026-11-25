@@ -1,8 +1,8 @@
 {
   "package": "@getwithin/sdk",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "repository": "https://github.com/supportbridge-within/supportbridge-sdk-fork",
-  "commit": "e0eed9622bcd5dcadea7b659f093716785e28344",
+  "commit": "29bdb8fe309ac34dce64c011935e93d4afb3b78e",
   "sourcePackage": "packages/sdk",
   "dependency": "file:vendor/within-sdk",
   "buildCommand": "corepack yarn workspace @getwithin/sdk build",

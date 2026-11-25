@@ -41,7 +41,7 @@ app.get("/", (_req, res) => {
     companyAccessDefaultLimit: 10,
     posthogMcpVersion: "0.23.0",
     posthogAnalyticsEnabled: Boolean(posthogClient),
-    supportBridgeSdkVersion: "0.4.0-e0eed9622bcd5dcadea7b659f093716785e28344",
+    supportBridgeSdkVersion: "0.5.0-29bdb8fe309ac34dce64c011935e93d4afb3b78e",
     supportBridgeCaptureArguments: false,
     supportBridgeHubsEnabled: true,
     supportBridgeConfigured: Boolean(process.env.SUPPORTBRIDGE_API_KEY)

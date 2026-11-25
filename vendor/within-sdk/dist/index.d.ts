@@ -14,7 +14,7 @@ declare const normalizeOfferArgs: (args?: Record<string, unknown>) => {
     offerId: string;
 };
 
-declare const SDK_VERSION = "0.4.0";
+declare const SDK_VERSION = "0.5.0";
 declare const CHAT_RESOURCE = "ui://supportbridge/chat";
 declare const INTENT_OFFER_RESOURCE = "ui://supportbridge/intent-offer";
 declare const APP_MIME = "text/html;profile=mcp-app";
@@ -263,25 +263,37 @@ declare function identifyFromContext(context: McpToolContext, options?: Identify
 declare function wrapTool<T extends VendorTool>(tool: T, options?: WrapToolOptions): T;
 
 type ExceptionType = 'export' | 'seats' | 'quota' | 'feature';
+/** The values Within accepts. Anything else is refused and the customer gets no invitation. */
+type ExportKind = 'csv' | 'xlsx' | 'pdf' | 'api' | 'other';
+type ExportLimitCode = 'row_cap' | 'monthly_quota' | 'plan_gated' | 'permission' | 'file_size' | 'rate_window' | 'other';
+/**
+ * What a tool refused. The short form is a message and a label. The long form names the
+ * export and the limit as well. Either `label` or `export.label` has to be there.
+ */
 interface ExportBlockInput {
     /** What was refused. Absent means an export. */
     type?: ExceptionType;
-    export: {
-        kind: string;
-        label: string;
+    /** Short form: what the customer was refused, in a few words. Becomes `export.label`. */
+    label?: string;
+    export?: {
+        /** Absent means `other`. */
+        kind?: ExportKind | (string & {});
+        label?: string;
         requested?: number;
         unit?: string;
     };
-    limit: {
-        code: string;
+    limit?: {
+        /** Absent means `other`. */
+        code?: ExportLimitCode | (string & {});
         allowed?: number;
         plan?: string;
     };
     message: string;
 }
 /**
- * The result a vendor tool returns when it refuses an export. Pass the descriptor, or the
- * tool's extra and then the descriptor. The wrapper stores the block and adds the invitation.
+ * The result a vendor tool returns when it refuses on purpose. Pass the descriptor, or the
+ * tool's extra and then the descriptor. `{ message, label }` is enough. The wrapper stores
+ * the block and adds the invitation.
  */
 declare function exportBlocked(descriptor: ExportBlockInput): ToolResult;
 declare function exportBlocked(extra: unknown, descriptor: ExportBlockInput): ToolResult;
@@ -370,4 +382,4 @@ declare namespace SupportBridge {
  */
 declare function previewIntentOfferHtml(payload?: unknown): string;
 
-export { APP_MIME, ASSISTANCE_INTENT_IDS, type AssistanceIntent, CHAT_RESOURCE, CONFIRM_ASSISTANCE_DESCRIPTION, type ClaimMap, type CustomerIdentity, DECLINE_ASSISTANCE_DESCRIPTION, DISPLAY_INSTRUCTIONS, type ExportBlockInput, INTENT_OFFER_RESOURCE, type IdentifyOptions, type IdentifyResult, type IdentityConfig, type IdentityProvider, type InstallOptions, type InstrumentedHandler, type InstrumentedTool, type McpToolContext, RESULT_HINT_SENTENCE, SDK_VERSION, SERVER_INSTRUCTIONS, STANDARD_ASSISTANCE_INTENTS, SupportBridge, type SupportBridgeInstallation, type ToolHandler, type VendorMcpServer, type VendorTool, type WrapToolOptions, assistanceDraft, assistanceFromOffer, asyncEscalationCopy, attachInvitation, cardFacts, exportBlocked, identifyFromContext, invitationText, liveOfferCopy, nameInitials, normalizeAssistanceArgs, normalizeOfferArgs, previewIntentOfferHtml, splitVendorAnswer, suggestedAssistanceMessage, vendorAnswerDescription, vendorAnswerResult, wrapTool };
+export { APP_MIME, ASSISTANCE_INTENT_IDS, type AssistanceIntent, CHAT_RESOURCE, CONFIRM_ASSISTANCE_DESCRIPTION, type ClaimMap, type CustomerIdentity, DECLINE_ASSISTANCE_DESCRIPTION, DISPLAY_INSTRUCTIONS, type ExceptionType, type ExportBlockInput, type ExportKind, type ExportLimitCode, INTENT_OFFER_RESOURCE, type IdentifyOptions, type IdentifyResult, type IdentityConfig, type IdentityProvider, type InstallOptions, type InstrumentedHandler, type InstrumentedTool, type McpToolContext, RESULT_HINT_SENTENCE, SDK_VERSION, SERVER_INSTRUCTIONS, STANDARD_ASSISTANCE_INTENTS, SupportBridge, type SupportBridgeInstallation, type ToolHandler, type VendorMcpServer, type VendorTool, type WrapToolOptions, assistanceDraft, assistanceFromOffer, asyncEscalationCopy, attachInvitation, cardFacts, exportBlocked, identifyFromContext, invitationText, liveOfferCopy, nameInitials, normalizeAssistanceArgs, normalizeOfferArgs, previewIntentOfferHtml, splitVendorAnswer, suggestedAssistanceMessage, vendorAnswerDescription, vendorAnswerResult, wrapTool };
